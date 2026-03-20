@@ -2,107 +2,126 @@
 #include <WiFi.h>
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
-#include <SPIFFS.h>
-#include "ApiClient.h"
+#include <LittleFS.h>
+#include <SPI.h>
 
-const char* ssid = "Home";
-const char* password = "adm1806*";
+#include "configuration.h"
+#include "RCSwitch.h"
+#include "leds/task_leds.h"
+#include "lights/task_light_controller.h"
+#include "logger/task_logger.h"
+#include "rendering/task_image_rendering.h"
+#include "webserver/task_webserver.h"
+#include "buzzer/task_buzzer.h"
 
-AsyncWebServer server(80);
+#define RECEIVER_PIN 2
 
-const char index_html[] PROGMEM = R"rawliteral(
-<!DOCTYPE html>
-<html>
-<head>
-<title>ESP32 Image Upload</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
-body{font-family:Arial;text-align:center;margin:40px;}
-img{max-width:90%;height:auto;border:1px solid #ccc;margin-top:20px;}
-</style>
-</head>
-<body>
+auto receiver = RCSwitch();
 
-<h2>Upload PNG Image</h2>
+QueueHandle_t lightControllerQueue;
+QueueHandle_t ledQueue;
+QueueHandle_t logQueue;
+QueueHandle_t webserverQueue;
+QueueHandle_t renderingQueue;
+QueueHandle_t buzzerQueue;
 
-<form method="POST" action="/upload" enctype="multipart/form-data">
-<input type="file" name="image" accept="image/png">
-<input type="submit" value="Upload">
-</form>
-
-<h2>Stored Image</h2>
-<img src="/image.png">
-
-</body>
-</html>
-)rawliteral";
-
-ApiClient api("jsonplaceholder.typicode.com", 443, true);
-
+SemaphoreHandle_t fsMutex;
 
 void setup() {
+    Serial.begin(115200);
+    neopixelWrite(RGB_BUILTIN, 0, 0, 0); // Green for success
+    fsMutex = xSemaphoreCreateMutex();
 
-    Serial.begin(9600);
-
-    if(!SPIFFS.begin(true)){
-        Serial.println("SPIFFS Mount Failed");
+    if (!LittleFS.begin(true)) {
+        Serial.println("LittleFS Mount Failed");
         return;
     }
 
-    WiFi.begin(ssid, password);
+#if defined(INITIAL_USER_NAME) && defined(INITIAL_CLIENT_KEY)
+    LittleFS.format();
+    File file = LittleFS.open(CREDENTIALS_FILE, FILE_WRITE);
+
+    JsonDocument doc;
+    doc["username"] = INITIAL_USER_NAME;
+    doc["clientkey"] = INITIAL_CLIENT_KEY;
+    if (serializeJson(doc, file) == 0) {
+        file.close();
+    }
+    file.close();
+#endif // INITIAL_USER_NAME && INITIAL_CLIENT_KEY
+
+    if (psramInit()) {
+        Serial.println("\nPSRAM is correctly initialized");
+    } else {
+        Serial.println("PSRAM not available");
+    }
+
+    WiFi.begin(WIFI_SSID, PASSWORD);
     Serial.print("Connecting");
 
-    while (WiFi.status() != WL_CONNECTED) {
+    while (WiFiClass::status() != WL_CONNECTED) {
+        neopixelWrite(RGB_BUILTIN, 0, 0, 128);
         delay(500);
         Serial.print(".");
+        neopixelWrite(RGB_BUILTIN, 0, 0, 0);
     }
 
     Serial.println();
     Serial.print("IP: ");
     Serial.println(WiFi.localIP());
 
-    server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-        request->send(200, "text/html", index_html);
-    });
 
-    server.on("/image.png", HTTP_GET, [](AsyncWebServerRequest *request){
-        if(SPIFFS.exists("/image.png"))
-            request->send(SPIFFS, "/image.png", "image/png");
-        else
-            request->send(404, "text/plain", "No image uploaded");
-    });
+    lightControllerQueue = xQueueCreate(5, sizeof(LightEvent));
+    logQueue = xQueueCreate(10, sizeof(LogEvent));
+    ledQueue = xQueueCreate(5, sizeof(LedEvent));
+    webserverQueue = xQueueCreate(5, sizeof(WebServerEvent));
+    renderingQueue = xQueueCreate(5, sizeof(ImageRendererEvent));
+    buzzerQueue = xQueueCreate(5, sizeof(BuzzerEvent));
 
-    server.on("/upload", HTTP_POST, [](AsyncWebServerRequest *request){
-        request->redirect("/");
-    }, [](AsyncWebServerRequest *request, String filename, size_t index,
-         uint8_t *data, size_t len, bool final){
+    if (lightControllerQueue != nullptr && ledQueue != nullptr && logQueue != nullptr && webserverQueue != nullptr &&
+        renderingQueue != nullptr && buzzerQueue != nullptr) {
+        // System Core
+        xTaskCreatePinnedToCore(ledsTask, "Leds", 4096, nullptr, 1, nullptr, 0);
+        xTaskCreatePinnedToCore(loggerTask, "Logger", 4096, nullptr, 1, nullptr, 0);
+        xTaskCreatePinnedToCore(buzzerTask, "Buzzer", 4096, nullptr, 1, nullptr, 0);
 
-        static File file;
+        // App Core
+        xTaskCreatePinnedToCore(webserverTask, "WebServer", 4096, nullptr, 1, nullptr, 1);
+        xTaskCreatePinnedToCore(lightControllerTask, "LightController", 16384, nullptr, 1, nullptr, 1);
+        xTaskCreatePinnedToCore(imageRenderingTask, "ImageRendering", 8192, nullptr, 1, nullptr, 1);
+    }
 
-        if(!index){
-            Serial.printf("UploadStart: %s\n", filename.c_str());
-            file = SPIFFS.open("/image.png", FILE_WRITE);
-        }
 
-        if(file){
-            file.write(data, len);
-        }
-
-        if(final){
-            if(file) file.close();
-            Serial.printf("UploadEnd: %s (%u)\n", filename.c_str(), index+len);
-        }
-    });
-
-    server.begin();
-
-    ApiResponse r = api.get("/todos/1");
-
-    Serial.println("Status:");
-    Serial.println(r.status);
-
-    Serial.println("Body:");
-    Serial.println(r.body);
+    receiver.enableReceive(digitalPinToInterrupt(RECEIVER_PIN));
 }
 
-void loop() {}
+
+uint32_t lastValue = 0;
+uint32_t lastTime = 0;
+
+void loop() {
+    if (receiver.available()) {
+        const uint64_t protocol = receiver.getReceivedProtocol();
+        const uint32_t value = receiver.getReceivedValue();
+        const uint32_t now = millis();
+
+        if (value != lastValue || (now - lastTime) >= 500) {
+            lastValue = value;
+            lastTime = now;
+
+            uint64_t data = protocol;
+            data = data << 40;
+            data = data | 0x000400000000 | value;
+
+            LogEvent::post("Signal received: %012llx\n", data);
+            receiver.resetAvailable();
+            
+            LightEvent::switchPressed(data);
+            BuzzerEvent::bip();
+        } else {
+            receiver.resetAvailable();
+        }
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(100));
+}
