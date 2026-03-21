@@ -4,13 +4,11 @@
 #include "configuration.h"
 #include <ArduinoJson.h>
 
-struct PsramAllocator : Allocator {
-    virtual ~PsramAllocator() = default;
+#include "allocator/psram_allocator.h"
+#include "webserver/task_webserver.h"
 
-    void *allocate(size_t size) override { return ps_malloc(size); }
-    void deallocate(void *ptr) override { free(ptr); }
-    void *reallocate(void *ptr, size_t new_size) override { return ps_realloc(ptr, new_size); }
-};
+void processSwitch(AsyncResult &aResult);
+void processList(AsyncResult &aResult);
 
 FirebaseManager::FirebaseManager(firebase_ns::FirebaseApp &app, AsyncClientClass &aClient,
                                  HueApiClient &hueApi) : _app(app), _aClient(aClient), _hueApi(hueApi) {
@@ -19,6 +17,9 @@ FirebaseManager::FirebaseManager(firebase_ns::FirebaseApp &app, AsyncClientClass
 void FirebaseManager::begin() {
     //_app.getApp<Storage>(_storage);
     _app.getApp<Firestore::Documents>(_fdo);
+    _aClient.setSyncReadTimeout(15); // Wait max 15s for data to arrive
+    _aClient.setSyncSendTimeout(10); // Wait max 10s to send the query
+    _aClient.setSessionTimeout(30000); // Max total session life (30s)
 }
 
 void FirebaseManager::loop() const {
@@ -29,9 +30,7 @@ bool FirebaseManager::ready() const {
     return _app.ready();
 }
 
-void FirebaseManager::handleSwitch(const String &switchUid) {
-    PsramAllocator allocator;
-
+void FirebaseManager::querySwitch(const String &switchUid) {
     FieldFilter fieldFilter;
     Values::StringValue stringValue(switchUid);
     fieldFilter.field(FieldReference("uid"))
@@ -39,43 +38,72 @@ void FirebaseManager::handleSwitch(const String &switchUid) {
             .value(Values::Value(stringValue));
 
     Filter filter(fieldFilter);
+    QueryOptions _queryOptions;
+    StructuredQuery query;
+    CollectionSelector selector = CollectionSelector("items", true);
+    query.where(filter);
+    query.from(selector);
+    query.limit(30);
 
-    _query.where(filter);
-    _query.from(_selector);
-    _query.limit(30);
+    _queryOptions.structuredQuery(query);
 
-    _defaultQueryOptions.structuredQuery(_query);
-    _query.clear();
+    _fdo.runQuery(_aClient, Firestore::Parent(FIREBASE_PROJECT_ID), "", _queryOptions, processSwitch, "runQueryTask Switch");
 
-    String response = _fdo.runQuery(_aClient, Firestore::Parent(FIREBASE_PROJECT_ID), "", _defaultQueryOptions);
+    LogEvent::post("Fetching switch data from Firestore..\n");
+    query.clear();
+}
+
+void FirebaseManager::handleSwitchResult(AsyncResult &aResult) {
+    PsramAllocator allocator;
 
     JsonDocument resultDoc(&allocator);
-    DeserializationError err = deserializeJson(resultDoc, response);
-    response = ""; // Manually free the large string memory immediately!
 
-    if (err || resultDoc.isNull() || resultDoc.size() == 0) return;
+    const DeserializationError err = deserializeJson(resultDoc, aResult.c_str());
+
+    if (err || resultDoc.isNull() || resultDoc.size() == 0) {
+        LogEvent::post("Failed to deserialize JSON: %s\n", err.c_str());
+        aResult.clear();
+        return;
+    }
 
     // 3. Avoid temporary Strings by using const char* or string_view
     const char *fullPath = resultDoc[0]["document"]["name"];
-    if (!fullPath) return;
+    if (!fullPath) {
+        LogEvent::post("No document found\n");
+        aResult.clear();
+        return;
+    }
 
     // Logic to find the relative path without creating 3 intermediate Strings
     std::string pathStr(fullPath);
-    size_t lastSlash = pathStr.find_last_of('/');
-    size_t docIdx = pathStr.find("/documents/");
+    const size_t lastSlash = pathStr.find_last_of('/');
+    const size_t docIdx = pathStr.find("/documents/");
 
-    if (docIdx == std::string::npos) return;
-    std::string relativePath = pathStr.substr(docIdx + 11, lastSlash - (docIdx + 11));
+    if (docIdx == std::string::npos) {
+        LogEvent::post("Invalid path: %s\n", fullPath);
+        aResult.clear();
+        return;
+    }
+    const String relativePath = pathStr.substr(docIdx + 11, lastSlash - (docIdx + 11)).c_str();
 
-    // 4. Second fetch
-    String itemsList = _fdo.list(_aClient, Firestore::Parent(FIREBASE_PROJECT_ID), relativePath.c_str(),
-                                 ListDocumentsOptions());
+   _fdo.list(_aClient, Firestore::Parent(FIREBASE_PROJECT_ID), relativePath.c_str(),
+                                 ListDocumentsOptions(),  processList, "runQueryTask List");
+
+    aResult.clear();
+}
+
+
+
+void FirebaseManager::handleListResult(AsyncResult &aResult) const {
+    PsramAllocator allocator;
 
     JsonDocument itemsDoc(&allocator); // Use PSRAM here too!
-    deserializeJson(itemsDoc, itemsList);
-    itemsList = ""; // Free the string memory
+    deserializeJson(itemsDoc, aResult.c_str());
 
     // 5. Use the pipe operator | for safe defaults (prevents crashes on missing fields)
+
+    bool firstToggle = true;
+    bool toggleTargetOn = false;
 
     for (JsonObject item: itemsDoc["documents"].as<JsonArray>()) {
         JsonObject f = item["fields"];
@@ -83,29 +111,25 @@ void FirebaseManager::handleSwitch(const String &switchUid) {
         const char *type = f["itemType"]["stringValue"] | "";
 
         if (strcmp(type, "LIGHT") == 0) {
-            LogEvent::post("Found light: %s (%s)\n",
-                           f["name"]["stringValue"] | "Unknown",
-                           f["uid"]["stringValue"] | "");
-
-            const char* hueId = f["uid"]["stringValue"] | "";
-            const char* stateStr = f["state"]["stringValue"] | "";
+            const char *hueId = f["uid"]["stringValue"] | "";
+            const char *stateStr = f["state"]["stringValue"] | "";
+            LogEvent::post("Hue ID: %s, State: %s\n", hueId, stateStr);
 
             if (strlen(hueId) == 0) continue;
 
-            LogEvent::post("Processing light: %s (Hue ID: %s, State: %s)\n",
-                f["name"]["stringValue"] | "Unknown", hueId, stateStr);
-
             bool targetOn = false;
-            bool doToggle = (strcmp(stateStr, "TOGGLE") == 0);
-
-            if (doToggle) {
-                auto res = _hueApi.getLight(hueId);
-                if (res.data.size() > 0) {
-                    targetOn = !res.data[0].on.on;
-                } else {
-                    LogEvent::post("Failed to get light status for %s\n", hueId);
-                    continue;
+            if (strcmp(stateStr, "TOGGLE") == 0) {
+                if (firstToggle) {
+                    auto res = _hueApi.getLight(hueId);
+                    if (res.data.size() > 0) {
+                        toggleTargetOn = !res.data[0].on.on;
+                        firstToggle = false;
+                    } else {
+                        LogEvent::post("Failed to get light status for %s\n", hueId);
+                        continue;
+                    }
                 }
+                targetOn = toggleTargetOn;
             } else {
                 targetOn = (strcmp(stateStr, "ON") == 0);
             }
@@ -127,7 +151,7 @@ void FirebaseManager::handleSwitch(const String &switchUid) {
             }
 
             _hueApi.updateLight(hueId, updateDoc.as<JsonVariantConst>());
-
         }
     }
+    aResult.clear();
 }

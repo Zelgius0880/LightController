@@ -7,18 +7,20 @@
 #include <webserver/task_webserver.h>
 #include <logger/task_logger.h>
 
+
 extern QueueHandle_t webserverQueue;
 
 AsyncWebServer server(80);
 WebServerHandler handler(server);
 
 [[noreturn]] void webserverTask(void *) {
-
     server.begin();
     handler.setup();
 
     LogEvent::post("Webserver task started\n");
     WebServerEvent event{};
+
+    server.begin();
 
     for (;;) {
         if (xQueueReceive(webserverQueue, &event, portMAX_DELAY)) {

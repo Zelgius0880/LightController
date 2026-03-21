@@ -2,6 +2,7 @@
 // Created by Zelgius on 18-03-26.
 //
 
+#include <esp_task_wdt.h>
 #include <lights/task_light_controller.h>
 #include <projdefs.h>
 #include <task.h>
@@ -15,33 +16,42 @@
 #include <webserver/task_webserver.h>
 
 #include "buzzer/task_buzzer.h"
+#include "leds/task_leds.h"
 
 extern QueueHandle_t lightControllerQueue;
 
-void processData(AsyncResult &aResult);
+void processAuth(AsyncResult &aResult);
+
+void processSwitch(AsyncResult &aResult);
+
+void processList(AsyncResult &aResult);
 
 firebase_ns::FirebaseApp app;
 WiFiClientSecure client;
 AsyncClientClass aClient(client);
-HueApiClient api(BRIDGE_IP, 443, true, true);
+HueApiClient api(BRIDGE_IP, 443, true);
 FirebaseManager firebaseManager(app, aClient, api);
 UserAuth user_auth(FIREBASE_WEB_API_KEY, FIREBASE_EMAIL,FIREBASE_PASSWORD, 3000);
 
+AsyncResult _firestoreResult;
 
 [[noreturn]] void lightControllerTask(void *pvParameters) {
+    esp_task_wdt_add(nullptr);
+
     LightEvent receivedEvent;
 
     client.setInsecure();
 
     LogEvent::post("Light controller task started\n");
 
-    initializeApp(aClient, app, getAuth(user_auth), processData, "🔐 authTask");
+    initializeApp(aClient, app, getAuth(user_auth), processAuth, "🔐 authTask");
     LogEvent::post("Initializing Firebase app..");
 
-    LedEvent::blink(128,128,0, 0, 100);
+    LedEvent::blink(128, 128, 0, 0, 100);
     while (!app.ready()) {
         vTaskDelay(pdMS_TO_TICKS(500));
         LogEvent::post(".");
+        esp_task_wdt_reset();
     }
     LedEvent::off();
 
@@ -51,13 +61,14 @@ UserAuth user_auth(FIREBASE_WEB_API_KEY, FIREBASE_EMAIL,FIREBASE_PASSWORD, 3000)
 
     WebServerEvent::printLog("Firebase Manager Initialized\n");
 
-    LedEvent::blink(0,0,128, 0, 100);
+    LedEvent::blink(0, 0, 128, 0, 100);
     api.loadCredentials();
     while (!api.isAuthenticated()) {
         api.handleAuthentication();
         vTaskDelay(pdMS_TO_TICKS(500));
+        esp_task_wdt_reset();
     }
-    LedEvent::plain(0,128,0,128);
+    LedEvent::plain(0, 128, 0, 128);
 
     WebServerEvent::printLog("Hue API Client Initialized\n");
     WebServerEvent::updateUsername(api.getUsername().c_str());
@@ -65,20 +76,29 @@ UserAuth user_auth(FIREBASE_WEB_API_KEY, FIREBASE_EMAIL,FIREBASE_PASSWORD, 3000)
     BuzzerEvent::melody();
 
     for (;;) {
+        esp_task_wdt_reset();
         if (xQueueReceive(lightControllerQueue, &receivedEvent, pdMS_TO_TICKS(50))) {
             // Handle outgoing data to Firebase
             if (receivedEvent.type == LightEventType::SWITCH_PRESSED) {
                 static char uidBuffer[13];
                 snprintf(uidBuffer, sizeof(uidBuffer), "%012llx", receivedEvent.data.switchUid);
-                firebaseManager.handleSwitch(uidBuffer);
+                firebaseManager.querySwitch(uidBuffer);
             }
         }
 
-       // if (firebaseManager.ready()) {
-            // Depending on your SDK version, it might be Firebase.loop()
-            // or it might handle itself inside ready().
-            firebaseManager.loop();
-        //}
+        firebaseManager.loop();
+
+        if (aClient.lastError().code() != 0) {
+            LogEvent::post("Firebase Error: %s (Code: %d)\n",
+                           aClient.lastError().message().c_str(),
+                           aClient.lastError().code());
+
+            aClient.stopAsync(true);
+            WebServerEvent::printLog("Network lost after SSL error. Waiting for reconnect...");
+            vTaskDelay(pdMS_TO_TICKS(5000));
+        } else {
+            portYIELD();
+        }
     }
 }
 
@@ -98,14 +118,14 @@ bool LightEvent::switchPressed(const uint64_t switchUid) {
 }
 
 
-void processData(AsyncResult &aResult) {
+void processAuth(AsyncResult &aResult) {
     // Exits when no result is available when calling from the loop.
     if (!aResult.isResult())
         return;
 
     if (aResult.isEvent()) {
         WebServerEvent::printLog("Event task: %s, msg: %s, code: %d\n", aResult.uid().c_str(),
-                 aResult.appEvent().message().c_str(), aResult.appEvent().code());
+                                 aResult.appEvent().message().c_str(), aResult.appEvent().code());
     }
 
     if (aResult.isDebug()) {
@@ -113,27 +133,75 @@ void processData(AsyncResult &aResult) {
     }
 
     if (aResult.isError()) {
-        WebServerEvent::printLog("Error task: %s, msg: %s, code: %d\n", aResult.uid().c_str(), aResult.error().message().c_str(),
-                 aResult.error().code());
+        WebServerEvent::printLog("Error task: %s, msg: %s, code: %d\n", aResult.uid().c_str(),
+                                 aResult.error().message().c_str(),
+                                 aResult.error().code());
     }
 
-    if (aResult.downloadProgress()) {
-        WebServerEvent::printLog("Downloaded, task: %s, %d%s (%d of %d)\n", aResult.uid().c_str(),
-                 aResult.downloadInfo().progress,
-                 "%", aResult.downloadInfo().downloaded, aResult.downloadInfo().total);
-        if (aResult.downloadInfo().total == aResult.downloadInfo().downloaded) {
-            WebServerEvent::printLog("Download task: %s, complete!✅️\n", aResult.uid().c_str());
-        }
+    if (aResult.available()) {
+        WebServerEvent::printLog("task: %s, payload: %s\n", aResult.uid().c_str(), aResult.c_str());
+
+        // The information printed from Firebase.printf may be truncated because of limited buffer memory to reduce the stack usage,
+        // use Serial.println(aResult.c_str()) to print entire content.
+    }
+}
+
+
+void processSwitch(AsyncResult &aResult) {
+    // Exits when no result is available when calling from the loop.
+    if (!aResult.isResult())
+        return;
+
+    if (aResult.isEvent()) {
+        WebServerEvent::printLog("Event task: %s, msg: %s, code: %d\n", aResult.uid().c_str(),
+                                 aResult.appEvent().message().c_str(), aResult.appEvent().code());
     }
 
-    if (aResult.uploadProgress()) {
-        WebServerEvent::printLog("Uploaded, task: %s, %d%s (%d of %d)\n", aResult.uid().c_str(), aResult.uploadInfo().progress,
-                 "%", aResult.uploadInfo().uploaded, aResult.uploadInfo().total);
-        if (aResult.uploadInfo().total == aResult.uploadInfo().uploaded) {
-            WebServerEvent::printLog("Upload task: %s, complete!✅️\n", aResult.uid().c_str());
-            LogEvent::post("Download URL: ");
-            LogEvent::post(aResult.uploadInfo().downloadUrl.c_str());
-            LogEvent::post("\n");
-        }
+    if (aResult.isDebug()) {
+        WebServerEvent::printLog("Debug task: %s, msg: %s\n", aResult.uid().c_str(), aResult.debug().c_str());
+    }
+
+    if (aResult.isError()) {
+        WebServerEvent::printLog("Error task: %s, msg: %s, code: %d\n", aResult.uid().c_str(),
+                                 aResult.error().message().c_str(),
+                                 aResult.error().code());
+    }
+
+    if (aResult.available()) {
+        WebServerEvent::printLog("task: %s, payload: %s\n", aResult.uid().c_str(), aResult.c_str());
+        firebaseManager.handleSwitchResult(aResult);
+
+        // The information printed from Firebase.printf may be truncated because of limited buffer memory to reduce the stack usage,
+        // use Serial.println(aResult.c_str()) to print entire content.
+    }
+}
+
+
+void processList(AsyncResult &aResult) {
+    // Exits when no result is available when calling from the loop.
+    if (!aResult.isResult())
+        return;
+
+    if (aResult.isEvent()) {
+        WebServerEvent::printLog("Event task: %s, msg: %s, code: %d\n", aResult.uid().c_str(),
+                                 aResult.appEvent().message().c_str(), aResult.appEvent().code());
+    }
+
+    if (aResult.isDebug()) {
+        WebServerEvent::printLog("Debug task: %s, msg: %s\n", aResult.uid().c_str(), aResult.debug().c_str());
+    }
+
+    if (aResult.isError()) {
+        WebServerEvent::printLog("Error task: %s, msg: %s, code: %d\n", aResult.uid().c_str(),
+                                 aResult.error().message().c_str(),
+                                 aResult.error().code());
+    }
+
+    if (aResult.available()) {
+        WebServerEvent::printLog("task: %s, payload: %s\n", aResult.uid().c_str(), aResult.c_str());
+        firebaseManager.handleListResult(aResult);
+
+        // The information printed from Firebase.printf may be truncated because of limited buffer memory to reduce the stack usage,
+        // use Serial.println(aResult.c_str()) to print entire content.
     }
 }

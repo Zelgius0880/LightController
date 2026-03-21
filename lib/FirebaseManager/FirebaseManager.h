@@ -28,7 +28,9 @@ public:
     void loop() const;
 
     // Firestore logic
-    void handleSwitch(const String &switchUid);
+    void querySwitch(const String &switchUid);
+    void handleSwitchResult(AsyncResult &aResult);
+    void handleListResult(AsyncResult &aResult) const;
 
     bool ready() const;
 
@@ -37,10 +39,6 @@ private:
     AsyncClientClass &_aClient;
     HueApiClient &_hueApi;
     Firestore::Documents _fdo;
-    QueryOptions _defaultQueryOptions;
-    StructuredQuery _query;
-    CollectionSelector _selector = CollectionSelector("items", true);
-
 };
 
 #endif

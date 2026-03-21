@@ -4,6 +4,7 @@
 #include <ESPAsyncWebServer.h>
 #include <LittleFS.h>
 #include <SPI.h>
+#include <ArduinoOTA.h>
 
 #include "configuration.h"
 #include "RCSwitch.h"
@@ -13,8 +14,11 @@
 #include "rendering/task_image_rendering.h"
 #include "webserver/task_webserver.h"
 #include "buzzer/task_buzzer.h"
+#include <esp_task_wdt.h>
+#include "HueApiClient.h"
 
 #define RECEIVER_PIN 2
+#define WDT_TIMEOUT_SECONDS 10000
 
 auto receiver = RCSwitch();
 
@@ -66,6 +70,8 @@ void setup() {
         neopixelWrite(RGB_BUILTIN, 0, 0, 0);
     }
 
+    esp_task_wdt_init(WDT_TIMEOUT_SECONDS, true);
+
     Serial.println();
     Serial.print("IP: ");
     Serial.println(WiFi.localIP());
@@ -75,24 +81,33 @@ void setup() {
     logQueue = xQueueCreate(10, sizeof(LogEvent));
     ledQueue = xQueueCreate(5, sizeof(LedEvent));
     webserverQueue = xQueueCreate(5, sizeof(WebServerEvent));
-    renderingQueue = xQueueCreate(5, sizeof(ImageRendererEvent));
-    buzzerQueue = xQueueCreate(5, sizeof(BuzzerEvent));
+    renderingQueue = xQueueCreate(1, sizeof(ImageRendererEvent));
+    buzzerQueue = xQueueCreate(1, sizeof(BuzzerEvent));
 
     if (lightControllerQueue != nullptr && ledQueue != nullptr && logQueue != nullptr && webserverQueue != nullptr &&
         renderingQueue != nullptr && buzzerQueue != nullptr) {
         // System Core
-        xTaskCreatePinnedToCore(ledsTask, "Leds", 4096, nullptr, 1, nullptr, 0);
-        xTaskCreatePinnedToCore(loggerTask, "Logger", 4096, nullptr, 1, nullptr, 0);
-        xTaskCreatePinnedToCore(buzzerTask, "Buzzer", 4096, nullptr, 1, nullptr, 0);
+        xTaskCreatePinnedToCore(ledsTask, "Leds", 2048, nullptr, 1, nullptr, 0);
+        xTaskCreatePinnedToCore(loggerTask, "Logger", 2048, nullptr, 1, nullptr, 0);
+        xTaskCreatePinnedToCore(buzzerTask, "Buzzer", 2048, nullptr, 1, nullptr, 0);
 
         // App Core
         xTaskCreatePinnedToCore(webserverTask, "WebServer", 4096, nullptr, 1, nullptr, 1);
         xTaskCreatePinnedToCore(lightControllerTask, "LightController", 16384, nullptr, 1, nullptr, 1);
-        xTaskCreatePinnedToCore(imageRenderingTask, "ImageRendering", 8192, nullptr, 1, nullptr, 1);
+        xTaskCreatePinnedToCore(imageRenderingTask, "ImageRendering", 4096, nullptr, 1, nullptr, 1);
     }
 
 
     receiver.enableReceive(digitalPinToInterrupt(RECEIVER_PIN));
+
+    ArduinoOTA.begin(WiFi.localIP(), "Arduino", "Arduino", InternalStorage);
+    ArduinoOTA.onStart([]() {
+        Serial.println("OTA Update started!"); // Print a message to the Serial Monitor
+        // Add other code here to disable peripherals, etc.
+    });
+    ArduinoOTA.onError([](const int code, const char* msg) {
+        Serial.printf("Error[%u]: %s \n", code, msg);
+    });
 }
 
 
@@ -100,12 +115,14 @@ uint32_t lastValue = 0;
 uint32_t lastTime = 0;
 
 void loop() {
+    ArduinoOTA.poll();
+
     if (receiver.available()) {
         const uint64_t protocol = receiver.getReceivedProtocol();
         const uint32_t value = receiver.getReceivedValue();
         const uint32_t now = millis();
 
-        if (value != lastValue || (now - lastTime) >= 500) {
+        if (value != lastValue || (now - lastTime) >= 1000) {
             lastValue = value;
             lastTime = now;
 
@@ -115,13 +132,12 @@ void loop() {
 
             LogEvent::post("Signal received: %012llx\n", data);
             receiver.resetAvailable();
-            
+
             LightEvent::switchPressed(data);
             BuzzerEvent::bip();
         } else {
             receiver.resetAvailable();
         }
     }
-
-    vTaskDelay(pdMS_TO_TICKS(100));
+    portYIELD();
 }

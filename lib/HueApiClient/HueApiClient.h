@@ -8,10 +8,12 @@
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
+#include <HTTPClient.h>
 #include <WiFiClientSecure.h>
-#include <leds/task_leds.h>
 
 #include "HueModels.h"
+
+#define DEBUG
 
 struct ApiResponse
 {
@@ -31,7 +33,7 @@ struct ApiResponse
 class HueApiClient
 {
 public:
-    HueApiClient(const String &host, int port = 443, bool https = true, bool debug = false);
+    HueApiClient(const String &host, int port = 443, bool https = true);
 
     void setApiKey(const String& apiKey);
     void setDebug(bool debug);
@@ -65,15 +67,18 @@ private:
     String _host;
     int _port;
     bool _https;
-    bool _debug;
     String _apiKey;
     String _clientKey;
     String _username;
     bool _authenticated = false;
     unsigned long _lastAuthAttempt = 0;
-    ApiResponse request(const String& method, const String& path, const String& body) const;
+    ApiResponse request(const String& method, const String& path, const String& body);
 
     static bool saveCredentials(const String &username, const String &clientKey);
+
+    HTTPClient _http;
+    WiFiClientSecure _secureClient;
+    WiFiClient _client;
 };
 
 #endif //LIGHTCONTROLLER_HUEAPICLIENT_H

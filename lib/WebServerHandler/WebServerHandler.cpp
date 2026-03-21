@@ -99,7 +99,8 @@ void WebServerHandler::handleRoot(AsyncWebServerRequest *request) {
 }
 
 void WebServerHandler::handleStatus(AsyncWebServerRequest *request) const {
-    JsonDocument doc;
+    PsramAllocator allocator;
+    JsonDocument doc(&allocator);
     size_t total = psramInit() ? ESP.getPsramSize() : 0;
     doc["authenticated"] = strlen(_hueUsername) > 0;
     doc["username"] = _hueUsername;

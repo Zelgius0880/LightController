@@ -12,23 +12,19 @@
 #include <LittleFS.h>
 
 #include "configuration.h"
+#include "allocator/psram_allocator.h"
 #include "leds/task_leds.h"
 
 extern SemaphoreHandle_t fsMutex;
 
-HueApiClient::HueApiClient(const String &host, const int port, const bool https, const bool debug) {
+HueApiClient::HueApiClient(const String &host, const int port, const bool https) {
     _host = host;
     _port = port;
     _https = https;
-    _debug = debug;
 }
 
 void HueApiClient::setApiKey(const String &apiKey) {
     _apiKey = apiKey;
-}
-
-void HueApiClient::setDebug(bool debug) {
-    _debug = debug;
 }
 
 Hue::AuthResponse HueApiClient::authenticate(const String &deviceType, bool generateClientKey) {
@@ -81,48 +77,33 @@ ApiResponse HueApiClient::put(const String &path, const JsonVariantConst &body) 
     return request("PUT", path, bodyStr);
 }
 
-ApiResponse HueApiClient::request(const String &method, const String &path, const String &body) const {
+ApiResponse HueApiClient::request(const String &method, const String &path, const String &body) {
     ApiResponse result;
-    HTTPClient http;
-    WiFiClientSecure secureClient;
-    WiFiClient client;
 
     String url = (_https ? "https://" : "http://") + _host + ":" + String(_port) + path;
 
     if (_https) {
-        secureClient.setInsecure(); // skip cert validation for now
-        http.begin(secureClient, url);
+        _secureClient.setInsecure();
+        _http.begin(_secureClient, url);
     } else {
-        http.begin(client, url);
+        _http.begin(_client, url);
     }
 
-    http.addHeader("Content-Type", "application/json");
+    _http.addHeader("Content-Type", "application/json");
+    if (_apiKey.length() > 0) _http.addHeader("hue-application-key", _apiKey);
 
-    if (_apiKey.length() > 0)
-        http.addHeader("hue-application-key", _apiKey);
-
-    int httpCode = http.sendRequest(method.c_str(), body);
-
-    if (_debug) {
-        Serial.printf("[HUE] %s %s\n", method.c_str(), url.c_str());
-        if (body.length() > 0) {
-            Serial.printf("[HUE] Request: %s\n", body.c_str());
-        }
-        Serial.printf("[HUE] Response Code: %d\n", httpCode);
-    }
-
+    const int httpCode = _http.sendRequest(method.c_str(), body);
     result.status = httpCode;
 
     if (httpCode > 0) {
-        String responseBody = http.getString();
-        if (_debug) {
-            Serial.printf("[HUE] Response Body: %s\n", responseBody.c_str());
-        }
+        String responseBody = _http.getString();
+# ifdef DEBUG
+        Serial.printf("[HUE] Response Body: %s\n", responseBody.c_str());
+#endif
         deserializeJson(result.body, responseBody);
     }
 
-    http.end();
-
+    _http.end();
     return result;
 }
 
@@ -178,11 +159,13 @@ bool HueApiClient::loadCredentials() {
     DeserializationError error;
     if (xSemaphoreTake(fsMutex, pdMS_TO_TICKS(1000))) {
         if (!LittleFS.exists(CREDENTIALS_FILE)) {
+            xSemaphoreGive(fsMutex);
             return false;
         }
 
         File file = LittleFS.open(CREDENTIALS_FILE, FILE_READ);
         if (!file) {
+            xSemaphoreGive(fsMutex);
             return false;
         }
 
