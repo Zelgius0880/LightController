@@ -31,7 +31,7 @@ public:
     // Convenience helpers for common queries (24h @ 30min => <= 48 samples)
     int getLast24hTemperature(const String& moduleId, NetatmoMeasureResponse& response);
     int getLast24hPressure(const String& moduleId, NetatmoMeasureResponse& response);
-    int getCurrentHumidity(NetatmoMeasureResponse& response); // main device (no module), single latest value
+    int getLast24hHumidity(NetatmoMeasureResponse& response); // main device (no module), single latest value
 
     // Lifecycle
     bool begin();

@@ -15,14 +15,26 @@
 #include "logger/task_logger.h"
 #include "configuration.h"
 
+#if !defined(ENABLE_NETATMO) || !defined(ENABLE_OWM)
+#include "mock_data.h"
+#endif
+
+
 extern QueueHandle_t renderingQueue;
 extern WiFiClientSecure sharedClient;
 SemaphoreHandle_t ImageRendererEvent::completionSemaphore = nullptr;
 ImageRenderer *ImageRenderer::instance = nullptr;
 
 ImageRenderer renderer;
+
+#ifdef ENABLE_NETATMO
 NetatmoClient netatmoClient(sharedClient);
+#endif
+
+#ifdef ENABLE_OWM
 OpenWeatherMapClient owmClient(sharedClient);
+#endif
+
 
 // Storage for Netatmo data
 NetatmoMeasureResponse tempMain;
@@ -42,20 +54,30 @@ OWMForecastResponse owmForecast;
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
 
+#if !defined(ENABLE_NETATMO) || !defined(ENABLE_OWM)
+    populateMocks(tempMain, tempModule, pressureMain, humidityMain, owmForecast);
+#endif
+
     ImageRendererEvent event{};
 
+#ifdef ENABLE_NETATMO
     netatmoClient.begin();
 
-    const NetatmoToken& token = netatmoClient.getTokenInfo();
-    WebServerEvent::updateNetatmoToken(token.accessToken.c_str(), token.refreshToken.c_str(), token.expiresIn, token.creationTimestamp);
+    const NetatmoToken &token = netatmoClient.getTokenInfo();
+    WebServerEvent::updateNetatmoToken(token.accessToken.c_str(), token.refreshToken.c_str(), token.expiresIn,
+                                       token.creationTimestamp);
 
     uint32_t lastTokenCheck = 0;
     uint32_t lastNetatmoUpdate = 0;
-    const uint32_t netatmoUpdateInterval = 15 * 60 * 1000; // 15 minutes
+    uint32_t lastOwmUpdate = 0;
+    constexpr uint32_t netatmoUpdateInterval = 15 * 60 * 1000; // 15 minutes
+    constexpr uint32_t owmUpdateInterval = 60 * 60 * 1000; // 60 minutes
+#endif
 
     for (;;) {
         esp_task_wdt_reset();
 
+#ifdef ENABLE_NETATMO
         // Check token validity every 60 seconds
         if (millis() - lastTokenCheck > 60000) {
             lastTokenCheck = millis();
@@ -63,8 +85,9 @@ OWMForecastResponse owmForecast;
                 LogEvent::post("Netatmo token expired or about to expire, refreshing...\n");
                 if (netatmoClient.refreshToken()) {
                     LogEvent::post("Netatmo token refreshed successfully\n");
-                    const NetatmoToken& t = netatmoClient.getTokenInfo();
-                    WebServerEvent::updateNetatmoToken(t.accessToken.c_str(), t.refreshToken.c_str(), t.expiresIn, t.creationTimestamp);
+                    const NetatmoToken &t = netatmoClient.getTokenInfo();
+                    WebServerEvent::updateNetatmoToken(t.accessToken.c_str(), t.refreshToken.c_str(), t.expiresIn,
+                                                       t.creationTimestamp);
                 } else {
                     LogEvent::post("Failed to refresh Netatmo token\n");
                 }
@@ -72,13 +95,13 @@ OWMForecastResponse owmForecast;
         }
 
         // Fetch Netatmo data every 15 minutes
-        if (millis() - lastNetatmoUpdate > netatmoUpdateInterval || lastNetatmoUpdate == 0 ) {
+        if (millis() - lastNetatmoUpdate > netatmoUpdateInterval || lastNetatmoUpdate == 0) {
             if (netatmoClient.isAuthenticated()) {
                 LogEvent::post("Fetching Netatmo data...\n");
-                
+
                 int status = netatmoClient.getLast24hTemperature("", tempMain);
                 if (status == 200) LogEvent::post("Fetched main temperature (%d samples)\n", tempMain.size);
-                
+
                 status = netatmoClient.getLast24hTemperature(NETATMO_MODULE_ID, tempModule);
                 if (status == 200) LogEvent::post("Fetched module temperature (%d samples)\n", tempModule.size);
 
@@ -88,24 +111,31 @@ OWMForecastResponse owmForecast;
                 status = netatmoClient.getCurrentHumidity(humidityMain);
                 if (status == 200) LogEvent::post("Fetched main humidity (%.1f %%)\n", humidityMain.values[0]);
 
-                LogEvent::post("Fetching OpenWeatherMap forecast...\n");
-                status = owmClient.getForecast(owmForecast);
-                if (status == 200) {
-                    LogEvent::post("Fetched OWM forecast (%d items)\n", owmForecast.forecast.size());
-                } else {
-                    LogEvent::post("Failed to fetch OWM forecast (status: %d)\n", status);
-                }
-
                 lastNetatmoUpdate = millis();
             }
         }
+#endif
+
+#ifdef ENABLE_OWM
+        if (millis() - lastOwmUpdate > owmUpdateInterval || lastOwmUpdate == 0) {
+            LogEvent::post("Fetching OpenWeatherMap forecast...\n");
+            const uint16_t status = owmClient.getForecast(owmForecast);
+            if (status == 200) {
+                LogEvent::post("Fetched OWM forecast (%d items)\n", owmForecast.forecast.size());
+            } else {
+                LogEvent::post("Failed to fetch OWM forecast (status: %d)\n", status);
+            }
+
+            lastOwmUpdate = millis();
+        }
+#endif
 
         if (xQueueReceive(renderingQueue, &event, pdMS_TO_TICKS(100))) {
             bool success = false;
             switch (event.type) {
                 case ImageRendererEventType::RENDER_IMAGE:
                     LogEvent::post("Rendering image\n");
-                    success = renderer.renderImage(tempMain, tempModule);
+                    success = renderer.renderImage(tempMain, tempModule, pressureMain, humidityMain, owmForecast);
                     LogEvent::post("Image rendered\n");
                     if (success && ImageRendererEvent::completionSemaphore != nullptr) {
                         xSemaphoreGive(ImageRendererEvent::completionSemaphore);
@@ -113,11 +143,15 @@ OWMForecastResponse owmForecast;
 
                     break;
                 case ImageRendererEventType::NETATMO_CODE:
+#ifdef ENABLE_NETATMO
+
                     LogEvent::post("Received Netatmo code\n");
                     if (netatmoClient.getToken(event.code)) {
-                        const NetatmoToken& t = netatmoClient.getTokenInfo();
-                        WebServerEvent::updateNetatmoToken(t.accessToken.c_str(), t.refreshToken.c_str(), t.expiresIn, t.creationTimestamp);
+                        const NetatmoToken &t = netatmoClient.getTokenInfo();
+                        WebServerEvent::updateNetatmoToken(t.accessToken.c_str(), t.refreshToken.c_str(), t.expiresIn,
+                                                           t.creationTimestamp);
                     }
+#endif
                     break;
                 default:
                     break;

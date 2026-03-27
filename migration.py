@@ -1,7 +1,10 @@
 ﻿import os
 import argparse
+import traceback
+
 import requests
 import json
+import sqlite3
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -9,7 +12,8 @@ load_dotenv()
 
 HUE_LIGHTS_CACHE = {}
 MISSING_HUE_IDS = {}  # {v1_id: name}
-MIGRATED_IDS_MAP = {} # {v1_id: v2_id}
+MIGRATED_IDS_MAP = {}  # {v1_id: v2_id}
+
 
 def fetch_hue_lights_from_bridge():
     """
@@ -41,6 +45,7 @@ def fetch_hue_lights_from_bridge():
     except Exception as e:
         print(f"Warning: Error fetching Hue lights from bridge: {e}")
 
+
 def update_hue_light_name(light_id, name):
     """
     Updates the name of a Hue light via the Bridge API v2.
@@ -69,6 +74,7 @@ def update_hue_light_name(light_id, name):
     except Exception as e:
         print(f"  - Error updating Hue light {light_id} name: {e}")
 
+
 def get_id_token(api_key, email, password):
     """
     Authenticates with Firebase Auth and returns an ID token.
@@ -82,6 +88,7 @@ def get_id_token(api_key, email, password):
     response = requests.post(url, json=payload)
     response.raise_for_status()
     return response.json()["idToken"]
+
 
 def hsb_to_xy(h, s, b):
     """
@@ -102,17 +109,23 @@ def hsb_to_xy(h, s, b):
         q = v * (1 - s * f)
         t = v * (1 - s * (1 - f))
         i %= 6
-        if i == 0: r, g, b_val = v, t, p
-        elif i == 1: r, g, b_val = q, v, p
-        elif i == 2: r, g, b_val = p, v, t
-        elif i == 3: r, g, b_val = p, q, v
-        elif i == 4: r, g, b_val = t, p, v
-        elif i == 5: r, g, b_val = v, p, q
+        if i == 0:
+            r, g, b_val = v, t, p
+        elif i == 1:
+            r, g, b_val = q, v, p
+        elif i == 2:
+            r, g, b_val = p, v, t
+        elif i == 3:
+            r, g, b_val = p, q, v
+        elif i == 4:
+            r, g, b_val = t, p, v
+        elif i == 5:
+            r, g, b_val = v, p, q
 
     # Gamma correction
-    r = ((r + 0.055) / (1.0 + 0.055))**2.4 if r > 0.04045 else r / 12.92
-    g = ((g + 0.055) / (1.0 + 0.055))**2.4 if g > 0.04045 else g / 12.92
-    b_val = ((b_val + 0.055) / (1.0 + 0.055))**2.4 if b_val > 0.04045 else b_val / 12.92
+    r = ((r + 0.055) / (1.0 + 0.055)) ** 2.4 if r > 0.04045 else r / 12.92
+    g = ((g + 0.055) / (1.0 + 0.055)) ** 2.4 if g > 0.04045 else g / 12.92
+    b_val = ((b_val + 0.055) / (1.0 + 0.055)) ** 2.4 if b_val > 0.04045 else b_val / 12.92
 
     # Wide Gamut D65 conversion
     X = r * 0.664511 + g * 0.154324 + b_val * 0.162028
@@ -126,6 +139,7 @@ def hsb_to_xy(h, s, b):
     y = Y / (X + Y + Z)
 
     return round(x, 4), round(y, 4)
+
 
 def transform_data(fields):
     """
@@ -165,7 +179,7 @@ def transform_data(fields):
             h = int(fields.get('hue', {}).get('integerValue', 0))
             s = int(fields.get('saturation', {}).get('integerValue', 0))
             b = int(fields.get('brightness', {}).get('integerValue', 100))
-            
+
             x, y = hsb_to_xy(h, s, b)
             fields['x'] = {'doubleValue': x}
             fields['y'] = {'doubleValue': y}
@@ -191,6 +205,7 @@ def transform_data(fields):
 
     return fields
 
+
 def write_document(project_id, id_token, doc_path, fields):
     """
     Writes a document to the destination Firestore using the REST API.
@@ -200,16 +215,202 @@ def write_document(project_id, id_token, doc_path, fields):
     headers = {
         "Authorization": f"Bearer {id_token}"
     }
-    
+
     # We use PATCH with ?currentDocument.exists=false to create OR just PATCH to overwrite
     # Using PATCH allows us to specify the document ID at the end of the URL.
     payload = {
         "fields": fields
     }
-    
+
     print(f"  - Writing document to destination: {doc_path}")
     response = requests.patch(url, headers=headers, json=payload)
     response.raise_for_status()
+
+
+def extract_firebase_value(field_data):
+    """
+    Extracts the value from Firebase Firestore field data.
+    """
+    if not field_data:
+        return None
+    if 'stringValue' in field_data:
+        return field_data['stringValue']
+    if 'integerValue' in field_data:
+        return int(field_data['integerValue'])
+    if 'doubleValue' in field_data:
+        return float(field_data['doubleValue'])
+    if 'booleanValue' in field_data:
+        return field_data['booleanValue']
+    return None
+
+
+def migrate_to_sqlite(dest_config, db_path):
+    """
+    Migrates data from destination Firebase to a local SQLite database.
+    """
+    print(f"Migrating from Firebase {dest_config['project_id']} to {db_path}...")
+
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    # Create tables if not exist
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS groups (
+            id INTEGER PRIMARY KEY, 
+            name TEXT, 
+            brightness REAL, 
+            x REAL, 
+            y REAL
+        );
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS lights (
+            uid TEXT PRIMARY KEY, 
+            name TEXT, 
+            type TEXT
+        );
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS group_lights (
+            groupId INTEGER, 
+            lightUid TEXT, 
+            brightness REAL, 
+            x REAL, 
+            y REAL, 
+            state TEXT, 
+            PRIMARY KEY(groupId, lightUid), 
+            FOREIGN KEY(groupId) REFERENCES groups(id), 
+            FOREIGN KEY(lightUid) REFERENCES lights(uid)
+            );
+    """)
+    cursor.execute("""
+                   CREATE TABLE IF NOT EXISTS switches (
+            uid TEXT PRIMARY KEY, 
+            name TEXT, 
+            groupId INTEGER, 
+            FOREIGN KEY(groupId) REFERENCES groups(id));
+    """)
+
+    # Clear existing data to ensure a clean migration (optional, but safer for string->int mapping)
+    cursor.execute("DELETE FROM group_lights")
+    cursor.execute("DELETE FROM lights")
+    cursor.execute("DELETE FROM switches")
+    cursor.execute("DELETE FROM groups")
+    try:
+        cursor.execute("DELETE FROM sqlite_sequence WHERE name='groups'")
+    except sqlite3.OperationalError:
+        # sqlite_sequence might not exist if no autoincrement has been used yet
+        pass
+
+    project_id = dest_config['project_id']
+    token = dest_config['token']
+
+    # 1. Fetch groups
+    print("Fetching groups from Firebase...")
+    groups_url = f"https://firestore.googleapis.com/v1/projects/{project_id}/databases/(default)/documents/groups"
+    headers = {"Authorization": f"Bearer {token}"}
+
+    next_page_token = None
+    while True:
+        params = {}
+        if next_page_token:
+            params['pageToken'] = next_page_token
+
+        response = requests.get(groups_url, headers=headers, params=params)
+        if response.status_code == 404:
+            break
+        response.raise_for_status()
+        data = response.json()
+
+        for doc in data.get("documents", []):
+            full_name = doc["name"]
+            relative_path = full_name.split("/documents/")[-1]  # e.g. groups/123
+
+            fields = doc.get("fields", {})
+            name = extract_firebase_value(fields.get("name"))
+            brightness = extract_firebase_value(fields.get("brightness"))
+            x = extract_firebase_value(fields.get("x"))
+            y = extract_firebase_value(fields.get("y"))
+
+            # Insert group and let SQLite handle the ID
+            cursor.execute("""
+                INSERT INTO groups (name, brightness, x, y) 
+                VALUES (?, ?, ?, ?)
+            """, (name, brightness, x, y))
+            group_id = cursor.lastrowid
+            print(f"  - Group: {name} (ID: {group_id})")
+
+            # 2. Fetch items for this group
+            items_url = f"https://firestore.googleapis.com/v1/projects/{project_id}/databases/(default)/documents/{relative_path}/items"
+
+            sub_next_page_token = None
+            while True:
+                sub_params = {}
+                if sub_next_page_token:
+                    sub_params['pageToken'] = sub_next_page_token
+
+                sub_resp = requests.get(items_url, headers=headers, params=sub_params)
+                if sub_resp.status_code == 404:
+                    break
+                sub_resp.raise_for_status()
+                sub_data = sub_resp.json()
+
+                for item_doc in sub_data.get("documents", []):
+                    item_fields = item_doc.get("fields", {})
+                    item_type = extract_firebase_value(item_fields.get("itemType"))
+                    uid = extract_firebase_value(item_fields.get("uid"))
+                    item_name = extract_firebase_value(item_fields.get("name"))
+
+                    if item_type == "LIGHT":
+                        state = extract_firebase_value(item_fields.get("state"))
+                        light_type = extract_firebase_value(item_fields.get("type"))
+                        light_brightness = extract_firebase_value(item_fields.get("brightness"))
+                        light_x = extract_firebase_value(item_fields.get("x"))
+                        light_y = extract_firebase_value(item_fields.get("y"))
+
+                        print(f"    * Light: {item_name} (UID: {uid})")
+                        cursor.execute("""
+                            INSERT INTO lights (uid, name, type)
+                            VALUES (?, ?, ?)
+                            ON CONFLICT(uid) DO UPDATE SET
+                                name=excluded.name,
+                                type=excluded.type
+                        """, (uid, item_name, light_type))
+
+                        cursor.execute("""
+                            INSERT INTO group_lights (groupId, lightUid, brightness, x, y, state)
+                            VALUES (?, ?, ?, ?, ?, ?)
+                            ON CONFLICT(groupId, lightUid) DO UPDATE SET
+                                brightness=excluded.brightness,
+                                x=excluded.x,
+                                y=excluded.y,
+                                state=excluded.state
+                        """, (group_id, uid, light_brightness, light_x, light_y, state))
+
+                    elif item_type == "SWITCH":
+                        print(f"    * Switch: {item_name} (UID: {uid})")
+                        cursor.execute("""
+                            INSERT INTO switches (uid, name, groupId)
+                            VALUES (?, ?, ?)
+                            ON CONFLICT(uid) DO UPDATE SET
+                                name=excluded.name,
+                                groupId=excluded.groupId
+                        """, (uid, item_name, group_id))
+                    else:
+                        print(f"    ! Unknown itemType: {item_type} for UID: {uid}")
+
+                sub_next_page_token = sub_data.get("nextPageToken")
+                if not sub_next_page_token:
+                    break
+
+        next_page_token = data.get("nextPageToken")
+        if not next_page_token:
+            break
+
+    conn.commit()
+    conn.close()
+    print("Migration to SQLite completed.")
+
 
 def migrate_collection(src_config, dest_config, collection_path, indent=0):
     """
@@ -218,13 +419,13 @@ def migrate_collection(src_config, dest_config, collection_path, indent=0):
     prefix = "  " * indent
     src_project_id = src_config['project_id']
     src_token = src_config['token']
-    
+
     dest_project_id = dest_config['project_id']
     dest_token = dest_config['token']
 
     # Use pageToken for pagination support
     next_page_token = None
-    
+
     print(f"{prefix}Migrating Collection: {collection_path}")
 
     while True:
@@ -232,41 +433,41 @@ def migrate_collection(src_config, dest_config, collection_path, indent=0):
         params = {}
         if next_page_token:
             params['pageToken'] = next_page_token
-        
+
         headers = {
             "Authorization": f"Bearer {src_token}"
         }
 
         try:
             response = requests.get(url, headers=headers, params=params)
-            
+
             if response.status_code == 404:
                 print(f"{prefix}  (Collection not found in source: {collection_path})")
                 return
-            
+
             response.raise_for_status()
             data = response.json()
         except Exception as e:
             print(f"{prefix}  Error fetching collection {collection_path}: {e}")
             return
-        
+
         documents = data.get("documents", [])
-        
+
         if not documents and not next_page_token:
             print(f"{prefix}  (No documents found in source)")
             return
 
         for doc in documents:
-            doc_name = doc["name"] # projects/{project_id}/databases/(default)/documents/{path}
+            doc_name = doc["name"]  # projects/{project_id}/databases/(default)/documents/{path}
             relative_path = doc_name.split("/documents/")[-1]
             doc_id = relative_path.split("/")[-1]
-            
+
             print(f"{prefix}  - Processing Document: {doc_id}")
-            
+
             # 1. Transform data
             src_fields = doc.get('fields', {})
             transformed_fields = transform_data(src_fields)
-            
+
             # Skip writing if transform_data returns None (e.g. missing light)
             if transformed_fields is None:
                 print(f"{prefix}  ! Skipping Document: {doc_id} (Missing required mapping)")
@@ -274,7 +475,7 @@ def migrate_collection(src_config, dest_config, collection_path, indent=0):
 
             # 2. Write to destination
             write_document(dest_project_id, dest_token, relative_path, transformed_fields)
-            
+
             # 3. Recursively migrate subcollections
             # According to the user, 'items' documents don't have subcollections.
             # We only migrate subcollections for documents in the 'groups' collection.
@@ -294,18 +495,19 @@ def migrate_collection(src_config, dest_config, collection_path, indent=0):
         if not next_page_token:
             break
 
+
 def migrate_subcollections(src_config, dest_config, doc_relative_path, indent):
     """
     Lists subcollections of a document in source and migrates them.
     """
     src_project_id = src_config['project_id']
     src_token = src_config['token']
-    
+
     url = f"https://firestore.googleapis.com/v1/projects/{src_project_id}/databases/(default)/documents/{doc_relative_path}:listCollectionIds"
     headers = {
         "Authorization": f"Bearer {src_token}"
     }
-    
+
     response = requests.post(url, headers=headers)
     if response.status_code != 200:
         # Ignore subcollection listing errors for documents without subcollections (like items)
@@ -315,6 +517,7 @@ def migrate_subcollections(src_config, dest_config, doc_relative_path, indent):
     for coll_id in collection_ids:
         sub_coll_path = f"{doc_relative_path}/{coll_id}"
         migrate_collection(src_config, dest_config, sub_coll_path, indent)
+
 
 def verify_migration(src_config, dest_config, collection_path, report_f):
     """
@@ -333,23 +536,23 @@ def verify_migration(src_config, dest_config, collection_path, report_f):
         if next_page_token:
             params['pageToken'] = next_page_token
         headers = {"Authorization": f"Bearer {src_token}"}
-        
+
         response = requests.get(url, headers=headers, params=params)
         if response.status_code == 404:
             return
         response.raise_for_status()
         data = response.json()
-        
+
         for doc in data.get("documents", []):
             # doc["name"] is 'projects/{project_id}/databases/(default)/documents/{path}'
             full_name = doc["name"]
             relative_path = full_name.split("/documents/")[-1]
-            
+
             # Check if doc exists in destination
             dest_url = f"https://firestore.googleapis.com/v1/projects/{dest_project_id}/databases/(default)/documents/{relative_path}"
             dest_headers = {"Authorization": f"Bearer {dest_token}"}
             dest_resp = requests.get(dest_url, headers=dest_headers)
-            
+
             if dest_resp.status_code == 200:
                 report_f.write(f"OK: {relative_path}\n")
             else:
@@ -366,10 +569,13 @@ def verify_migration(src_config, dest_config, collection_path, report_f):
         if not next_page_token:
             break
 
+
 def main():
-    parser = argparse.ArgumentParser(description="Migrate data between two Firebase Firestore databases.")
-    parser.add_argument("--collection", required=True, help="The name of the collection to migrate.")
-    
+    parser = argparse.ArgumentParser(
+        description="Migrate data between two Firebase Firestore databases or from Firebase to SQLite.")
+    parser.add_argument("--collection", help="The name of the collection to migrate (Firebase to Firebase).")
+    parser.add_argument("--to-sqlite", action="store_true", help="Migrate DEST_FIREBASE to lights.db")
+
     args = parser.parse_args()
 
     # Get Source config from environment
@@ -384,49 +590,66 @@ def main():
     dest_password = os.getenv("DEST_FIREBASE_PASSWORD")
     dest_project_id = os.getenv("DEST_FIREBASE_PROJECT_ID")
 
-    if not all([src_api_key, src_email, src_password, src_project_id,
-                dest_api_key, dest_email, dest_password, dest_project_id]):
-        print("Error: Missing environment variables in .env file.")
-        print("Required: SOURCE_ and DEST_ variants of FIREBASE_API_KEY, EMAIL, PASSWORD, PROJECT_ID")
-        return
+    if args.to_sqlite:
+        if not all([dest_api_key, dest_email, dest_password, dest_project_id]):
+            print("Error: Missing DEST_FIREBASE environment variables in .env file.")
+            return
+    else:
+        if not all([src_api_key, src_email, src_password, src_project_id,
+                    dest_api_key, dest_email, dest_password, dest_project_id]):
+            print("Error: Missing environment variables in .env file.")
+            print("Required: SOURCE_ and DEST_ variants of FIREBASE_API_KEY, EMAIL, PASSWORD, PROJECT_ID")
+            return
+        if not args.collection:
+            print("Error: --collection is required for Firebase to Firebase migration.")
+            return
 
     try:
-        fetch_hue_lights_from_bridge()
-        print("Authenticating with Source...")
-        src_token = get_id_token(src_api_key, src_email, src_password)
-        
-        print("Authenticating with Destination...")
-        dest_token = get_id_token(dest_api_key, dest_email, dest_password)
+        if not args.to_sqlite:
+            fetch_hue_lights_from_bridge()
+            print("Authenticating with Source...")
+            src_token = get_id_token(src_api_key, src_email, src_password)
 
-        src_config = {'project_id': src_project_id, 'token': src_token}
-        dest_config = {'project_id': dest_project_id, 'token': dest_token}
-        
-        print(f"Starting migration for collection: {args.collection}")
-        migrate_collection(src_config, dest_config, args.collection)
-        print("Migration completed.")
-        
-        print("Starting verification...")
-        with open("migration_verification.log", "w", encoding="utf-8") as f:
-            f.write(f"Verification Report for collection: {args.collection}\n")
-            f.write("-" * 50 + "\n")
-            verify_migration(src_config, dest_config, args.collection, f)
-        print("Verification completed. Results written to migration_verification.log")
+            print("Authenticating with Destination...")
+            dest_token = get_id_token(dest_api_key, dest_email, dest_password)
 
-        if MISSING_HUE_IDS:
-            with open("missing_ids.log", "w", encoding="utf-8") as f:
-                for mid in sorted(MISSING_HUE_IDS.keys()):
-                    name = MISSING_HUE_IDS[mid]
-                    f.write(f"v1 id: {mid}, Name: {name}\n")
-            print(f"Log of {len(MISSING_HUE_IDS)} missing Hue IDs written to missing_ids.log")
-        
-        if MIGRATED_IDS_MAP:
-            with open("id_mapping.log", "w", encoding="utf-8") as f:
-                for v1, v2 in sorted(MIGRATED_IDS_MAP.items()):
-                    f.write(f"v1: {v1} -> v2: {v2}\n")
-            print(f"ID mapping written to id_mapping.log")
-        
+            src_config = {'project_id': src_project_id, 'token': src_token}
+            dest_config = {'project_id': dest_project_id, 'token': dest_token}
+
+            print(f"Starting migration for collection: {args.collection}")
+            migrate_collection(src_config, dest_config, args.collection)
+            print("Migration completed.")
+
+            print("Starting verification...")
+            with open("migration_verification.log", "w", encoding="utf-8") as f:
+                f.write(f"Verification Report for collection: {args.collection}\n")
+                f.write("-" * 50 + "\n")
+                verify_migration(src_config, dest_config, args.collection, f)
+            print("Verification completed. Results written to migration_verification.log")
+
+            if MISSING_HUE_IDS:
+                with open("missing_ids.log", "w", encoding="utf-8") as f:
+                    for mid in sorted(MISSING_HUE_IDS.keys()):
+                        name = MISSING_HUE_IDS[mid]
+                        f.write(f"v1 id: {mid}, Name: {name}\n")
+                print(f"Log of {len(MISSING_HUE_IDS)} missing Hue IDs written to missing_ids.log")
+
+            if MIGRATED_IDS_MAP:
+                with open("id_mapping.log", "w", encoding="utf-8") as f:
+                    for v1, v2 in sorted(MIGRATED_IDS_MAP.items()):
+                        f.write(f"v1: {v1} -> v2: {v2}\n")
+                print(f"ID mapping written to id_mapping.log")
+        else:
+            print("Authenticating with Destination...")
+            dest_token = get_id_token(dest_api_key, dest_email, dest_password)
+            dest_config = {'project_id': dest_project_id, 'token': dest_token}
+
+            migrate_to_sqlite(dest_config, "lights.db")
+
     except Exception as e:
+        print(traceback.format_exc())
         print(f"Error during migration: {e}")
+
 
 if __name__ == "__main__":
     main()

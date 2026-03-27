@@ -7,16 +7,18 @@
 
 #include <rendering/task_image_rendering.h>
 #include <ImageRenderer.h>
+#include <LightsDatabaseManager.h>
 #include "esp_core_dump.h"
 
 extern QueueHandle_t renderingQueue;
 extern SemaphoreHandle_t fsMutex;
+extern LightsDatabaseManager dbManager;
 
 #define STRINGIFY(x) #x
 #define TOSTRING(x) STRINGIFY(x)
 
 WebServerHandler::WebServerHandler(AsyncWebServer &server)
-    : _server(server), _hueUsername(""), _errorBuffer{}, _logBuffer{} {
+    : _server(server), _hueUsername(""), _errorBuffer{}, _logBuffer{}, _importBuffer(nullptr), _importBufferLen(0) {
 }
 
 void WebServerHandler::addLogMessage(const char *msg) {
@@ -35,6 +37,9 @@ void WebServerHandler::addLogMessage(const char *msg) {
 }
 
 void WebServerHandler::setup() {
+    DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
+    DefaultHeaders::Instance().addHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
+    DefaultHeaders::Instance().addHeader("Access-Control-Allow-Headers", "Content-Type");
     _server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
         request->send(200, "text/html", index_html, processor);
     });
@@ -43,14 +48,33 @@ void WebServerHandler::setup() {
         handleStatus(request);
     });
 
+    _server.on("/upload_image", HTTP_OPTIONS, [](AsyncWebServerRequest *request) {
+        request->send(204); // "No Content" is standard for a preflight success
+    });
 
-    _server.on("/upload_image", HTTP_POST, [](AsyncWebServerRequest *request) {
-                   request->send(200, "text/plain", "OK");
-               }, [this](AsyncWebServerRequest *request, const String &filename, size_t index, uint8_t *data,
-                         size_t len,
-                         bool final) {
-                   handleUpload(request, filename, index, data, len, final);
-               });
+    // 1. Create the handler
+    AsyncCallbackWebHandler *handler = &_server.on("/upload_image", HTTP_POST, [](AsyncWebServerRequest *request) {
+        request->send(200, "application/json", R"({"status":"ok"})");
+    });
+
+    // 2. Attach the Body handler to it
+    handler->onBody([this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+        if (xSemaphoreTake(fsMutex, pdMS_TO_TICKS(5000))) {
+            if (!index) {
+                // Open file for writing
+                request->_tempFile = LittleFS.open("/image.bin", "w");
+            }
+
+            if (request->_tempFile) {
+                request->_tempFile.write(data, len);
+            }
+
+            if (index + len == total) {
+                request->_tempFile.close();
+            }
+            xSemaphoreGive(fsMutex);
+        }
+    });
 
 
     _server.on("/render", HTTP_GET, [](AsyncWebServerRequest *request) {
@@ -68,25 +92,13 @@ void WebServerHandler::setup() {
         };
 
         if (xQueueSend(renderingQueue, &event, pdMS_TO_TICKS(100)) == pdTRUE) {
-            if (xSemaphoreTake(ImageRendererEvent::completionSemaphore, pdMS_TO_TICKS(10000)) == pdTRUE) {
-                AsyncWebServerResponse *response = request->beginResponse(
-                    200, "image/jpeg", ImageRenderer::instance->getJpgOutput(), ImageRenderer::instance->getJpgSize());
-                response->addHeader("Cache-Control", "no-cache");
-                request->send(response);
+            if (xSemaphoreTake(ImageRendererEvent::completionSemaphore, pdMS_TO_TICKS(10*60000)) == pdTRUE) {
+                request->send(200, "application/json", R"({"status":"ok"})");
             } else {
                 request->send(504, "text/plain", "Render Timeout");
             }
         } else {
             request->send(503, "text/plain", "Rendering Queue Full");
-        }
-    });
-
-
-    _server.on("/image.jpg", HTTP_GET, [](AsyncWebServerRequest *request) {
-        if (LittleFS.exists("/image.jpg")) {
-            request->send(LittleFS, "/image.jpg", "image/jpeg");
-        } else {
-            request->send(404, "text/plain", "Image not found");
         }
     });
 
@@ -148,10 +160,59 @@ void WebServerHandler::setup() {
             request->send(400, "text/plain", "Missing code parameter");
         }
     });
+
+    _server.on("/export_db", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        request->send(LittleFS, DB_PATH, "application/octet-stream", true);
+    });
+
+    _server.on("/import_db", HTTP_POST, [this](AsyncWebServerRequest *request) {
+                   request->send(200, "text/plain", "Import successful");
+               },
+               [this](AsyncWebServerRequest *request, const String &filename, size_t index, uint8_t *data, size_t len,
+                      bool final) {
+                   if (index == 0) {
+                       size_t totalSize = request->contentLength();
+                       if (totalSize == 0) {
+                           return; // Or handle error: cannot allocate unknown size
+                       }
+
+                       // Allocate from PSRAM
+                       _importBuffer = (uint8_t *) ps_malloc(totalSize);
+                       if (_importBuffer == nullptr) {
+                           LogEvent::post("Failed to allocate PSRAM for DB import\n");
+                           return;
+                       }
+                       _importBufferLen = totalSize;
+                   }
+
+                   if (_importBuffer) {
+                       memcpy(_importBuffer + index, data, len);
+                   }
+
+                   if (final && _importBuffer) {
+                       bool success = false;
+
+                       // Take FS mutex to prevent concurrent access
+                       if (xSemaphoreTake(fsMutex, pdMS_TO_TICKS(5000))) {
+                           success = dbManager.importDatabase(_importBuffer, _importBufferLen);
+                           xSemaphoreGive(fsMutex);
+                       }
+
+                       // CRITICAL: Always free PSRAM after the import attempt
+                       free(_importBuffer);
+                       _importBuffer = nullptr;
+                       _importBufferLen = 0;
+
+                       if (success) {
+                           LogEvent::post("Database imported from PSRAM successfully\n");
+                       } else {
+                           LogEvent::post("Failed to import database from PSRAM\n");
+                       }
+                   }
+               });
 }
 
 void WebServerHandler::handleStatus(AsyncWebServerRequest *request) const {
-    PsramAllocator allocator;
     JsonDocument doc(&allocator);
     size_t total = psramInit() ? ESP.getPsramSize() : 0;
     doc["authenticated"] = strlen(_hueUsername) > 0;
@@ -204,6 +265,7 @@ void WebServerHandler::handleLogs(AsyncWebServerRequest *request) const {
 
 void WebServerHandler::handleUpload(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data,
                                     size_t len, bool final) {
+    LogEvent::post("Uploading image chunk %d\n", index);
     if (index == 0) {
         // First chunk, open file for WRITE to truncate existing
         if (xSemaphoreTake(fsMutex, pdMS_TO_TICKS(1000))) {
@@ -216,6 +278,8 @@ void WebServerHandler::handleUpload(AsyncWebServerRequest *request, String filen
             file.write(data, len);
             file.close();
             xSemaphoreGive(fsMutex);
+        } else {
+            LogEvent::post("Get MUTEX failed");
         }
     } else {
         // Subsequent chunks, open file for APPEND
@@ -230,6 +294,8 @@ void WebServerHandler::handleUpload(AsyncWebServerRequest *request, String filen
             file.write(data, len);
             file.close();
             xSemaphoreGive(fsMutex);
+        } else {
+            LogEvent::post("Get MUTEX failed");
         }
     }
 

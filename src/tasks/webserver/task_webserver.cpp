@@ -5,7 +5,9 @@
 
 #include <WebServerHandler.h>
 #include <webserver/task_webserver.h>
+#include <LightsDatabaseManager.h>
 #include <logger/task_logger.h>
+#include "configuration.h"
 #include <ElegantOTA.h>
 #include <esp_task_wdt.h>
 
@@ -49,7 +51,6 @@ void onOTAEnd(bool success) {
     ElegantOTA.onProgress(onOTAProgress);
     ElegantOTA.onEnd(onOTAEnd);
     ElegantOTA.setAutoReboot(true);
-
 
     server.begin();
     handler.setup();

@@ -3,7 +3,6 @@
 
 #include <ESPAsyncWebServer.h>
 #include <HueApiClient.h>
-
 #include <NetatmoModels.h>
 
 #define LOG_BUFFER_SIZE 5
@@ -25,6 +24,7 @@ public:
         _netatmoToken.creationTimestamp = creationTimestamp;
     }
 
+
     void setErrorMessage(const char *msg) {
         strncpy(_errorBuffer, msg, min(strlen(msg) + 1, sizeof(_errorBuffer) - 1));
     }
@@ -39,6 +39,8 @@ private:
     char _logBuffer[LOG_BUFFER_SIZE][128];
     size_t _logIndex = 0; // points to next write position
     size_t _logCount = 0; // number of valid entries (max 10)
+    uint8_t* _importBuffer;
+    size_t _importBufferLen;
 
     void handleStatus(AsyncWebServerRequest *request) const;
 

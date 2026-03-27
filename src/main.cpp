@@ -17,6 +17,9 @@
 #include "HueApiClient.h"
 #include <NTPClient.h>
 
+#include "DEV_Config.h"
+#include "EPD_13in3e.h"
+
 #define RECEIVER_PIN 2
 #define WDT_TIMEOUT_SECONDS 10000
 
@@ -41,6 +44,9 @@ void setup() {
     Serial.begin(115200);
     neopixelWrite(RGB_BUILTIN, 0, 0, 0); // Green for success
     fsMutex = xSemaphoreCreateMutex();
+
+    DEV_Module_Init();
+    EPD_13IN3E_Init();
 
     if (!LittleFS.begin(true)) {
         Serial.println("LittleFS Mount Failed");
@@ -103,8 +109,9 @@ void setup() {
         xTaskCreatePinnedToCore(imageRenderingTask, "ImageRendering", 8192, nullptr, 1, nullptr, 1);
     }
 
-
+#ifdef ENABLE_LIGHTS
     receiver.enableReceive(digitalPinToInterrupt(RECEIVER_PIN));
+#endif
 }
 
 
