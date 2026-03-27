@@ -1,10 +1,9 @@
 #ifndef FIREBASE_MANAGER_H
 #define FIREBASE_MANAGER_H
 
-#include <vector>
 #include <FirebaseClient.h>
 
-#include "../HueApiClient/HueApiClient.h"
+#include <HueApiClient.h>
 
 class AsyncClientClass;
 
@@ -29,7 +28,10 @@ public:
 
     // Firestore logic
     void querySwitch(const String &switchUid);
+
     void handleSwitchResult(AsyncResult &aResult);
+
+
     void handleListResult(AsyncResult &aResult) const;
 
     bool ready() const;
@@ -39,6 +41,10 @@ private:
     AsyncClientClass &_aClient;
     HueApiClient &_hueApi;
     Firestore::Documents _fdo;
+
+    String _lastRelativePath;
+
+    static ListDocumentsOptions getBaseListOptions();
 };
 
 #endif

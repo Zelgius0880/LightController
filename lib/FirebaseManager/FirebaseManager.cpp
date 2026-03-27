@@ -1,11 +1,11 @@
 #include "FirebaseManager.h"
-#include <logger/task_logger.h>
 #include <FirebaseClient.h>
 #include "configuration.h"
 #include <ArduinoJson.h>
 
 #include "allocator/psram_allocator.h"
-#include "webserver/task_webserver.h"
+#include "buzzer/task_buzzer.h"
+#include "../HueApiClient/HueApiClient.h"
 
 void processSwitch(AsyncResult &aResult);
 void processList(AsyncResult &aResult);
@@ -17,9 +17,9 @@ FirebaseManager::FirebaseManager(firebase_ns::FirebaseApp &app, AsyncClientClass
 void FirebaseManager::begin() {
     //_app.getApp<Storage>(_storage);
     _app.getApp<Firestore::Documents>(_fdo);
-    _aClient.setSyncReadTimeout(15); // Wait max 15s for data to arrive
-    _aClient.setSyncSendTimeout(10); // Wait max 10s to send the query
-    _aClient.setSessionTimeout(30000); // Max total session life (30s)
+    _aClient.setSyncReadTimeout(5);
+    _aClient.setSyncSendTimeout(5);
+    _aClient.setSessionTimeout(5);
 }
 
 void FirebaseManager::loop() const {
@@ -32,36 +32,34 @@ bool FirebaseManager::ready() const {
 
 void FirebaseManager::querySwitch(const String &switchUid) {
     FieldFilter fieldFilter;
-    Values::StringValue stringValue(switchUid);
+    const Values::StringValue stringValue(switchUid);
     fieldFilter.field(FieldReference("uid"))
             .op(FieldFilterOperator::EQUAL)
             .value(Values::Value(stringValue));
 
-    Filter filter(fieldFilter);
-    QueryOptions _queryOptions;
+    const Filter filter(fieldFilter);
+    QueryOptions queryOptions;
     StructuredQuery query;
-    CollectionSelector selector = CollectionSelector("items", true);
+    const auto selector = CollectionSelector("items", true);
     query.where(filter);
     query.from(selector);
-    query.limit(30);
+    query.limit(1);
 
-    _queryOptions.structuredQuery(query);
+    queryOptions.structuredQuery(query);
 
-    _fdo.runQuery(_aClient, Firestore::Parent(FIREBASE_PROJECT_ID), "", _queryOptions, processSwitch, "runQueryTask Switch");
+    _fdo.runQuery(_aClient, Firestore::Parent(FIREBASE_PROJECT_ID), "", queryOptions, processSwitch, "runQueryTask Switch");
 
-    LogEvent::post("Fetching switch data from Firestore..\n");
+    HUE_LOG("Fetching switch data from Firestore..\n");
     query.clear();
 }
 
 void FirebaseManager::handleSwitchResult(AsyncResult &aResult) {
-    PsramAllocator allocator;
-
     JsonDocument resultDoc(&allocator);
 
     const DeserializationError err = deserializeJson(resultDoc, aResult.c_str());
 
     if (err || resultDoc.isNull() || resultDoc.size() == 0) {
-        LogEvent::post("Failed to deserialize JSON: %s\n", err.c_str());
+        HUE_LOG("Failed to deserialize JSON: %s\n", err.c_str());
         aResult.clear();
         return;
     }
@@ -69,7 +67,7 @@ void FirebaseManager::handleSwitchResult(AsyncResult &aResult) {
     // 3. Avoid temporary Strings by using const char* or string_view
     const char *fullPath = resultDoc[0]["document"]["name"];
     if (!fullPath) {
-        LogEvent::post("No document found\n");
+        HUE_LOG("No document found\n");
         aResult.clear();
         return;
     }
@@ -80,23 +78,26 @@ void FirebaseManager::handleSwitchResult(AsyncResult &aResult) {
     const size_t docIdx = pathStr.find("/documents/");
 
     if (docIdx == std::string::npos) {
-        LogEvent::post("Invalid path: %s\n", fullPath);
+        HUE_LOG("Invalid path: %s\n", fullPath);
         aResult.clear();
         return;
     }
-    const String relativePath = pathStr.substr(docIdx + 11, lastSlash - (docIdx + 11)).c_str();
+    _lastRelativePath = String(pathStr.substr(docIdx + 11, lastSlash - (docIdx + 11)).c_str());
 
-   _fdo.list(_aClient, Firestore::Parent(FIREBASE_PROJECT_ID), relativePath.c_str(),
-                                 ListDocumentsOptions(),  processList, "runQueryTask List");
+    _fdo.list(_aClient, Firestore::Parent(FIREBASE_PROJECT_ID), _lastRelativePath,
+              getBaseListOptions(), processList, "runQueryTask List");
 
-    aResult.clear();
+    BuzzerEvent::bip2();
+    //aResult.clear();
 }
 
-
+ListDocumentsOptions FirebaseManager::getBaseListOptions() {
+    ListDocumentsOptions options;
+    options.orderBy("state desc");
+    return options;
+}
 
 void FirebaseManager::handleListResult(AsyncResult &aResult) const {
-    PsramAllocator allocator;
-
     JsonDocument itemsDoc(&allocator); // Use PSRAM here too!
     deserializeJson(itemsDoc, aResult.c_str());
 
@@ -104,6 +105,7 @@ void FirebaseManager::handleListResult(AsyncResult &aResult) const {
 
     bool firstToggle = true;
     bool toggleTargetOn = false;
+
 
     for (JsonObject item: itemsDoc["documents"].as<JsonArray>()) {
         JsonObject f = item["fields"];
@@ -113,7 +115,7 @@ void FirebaseManager::handleListResult(AsyncResult &aResult) const {
         if (strcmp(type, "LIGHT") == 0) {
             const char *hueId = f["uid"]["stringValue"] | "";
             const char *stateStr = f["state"]["stringValue"] | "";
-            LogEvent::post("Hue ID: %s, State: %s\n", hueId, stateStr);
+            HUE_LOG("Hue ID: %s, State: %s\n", hueId, stateStr);
 
             if (strlen(hueId) == 0) continue;
 
@@ -121,11 +123,11 @@ void FirebaseManager::handleListResult(AsyncResult &aResult) const {
             if (strcmp(stateStr, "TOGGLE") == 0) {
                 if (firstToggle) {
                     auto res = _hueApi.getLight(hueId);
-                    if (res.data.size() > 0) {
+                    if (!res.data.empty()) {
                         toggleTargetOn = !res.data[0].on.on;
                         firstToggle = false;
                     } else {
-                        LogEvent::post("Failed to get light status for %s\n", hueId);
+                        HUE_LOG("Failed to get light status for %s\n", hueId);
                         continue;
                     }
                 }
@@ -153,5 +155,6 @@ void FirebaseManager::handleListResult(AsyncResult &aResult) const {
             _hueApi.updateLight(hueId, updateDoc.as<JsonVariantConst>());
         }
     }
+
     aResult.clear();
 }

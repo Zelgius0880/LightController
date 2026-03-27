@@ -10,10 +10,12 @@
 
 enum class ImageRendererEventType {
     RENDER_IMAGE,
+    NETATMO_CODE,
 };
 
 struct ImageRendererEvent {
     ImageRendererEventType type;
+    char code[128];
     static SemaphoreHandle_t completionSemaphore;
 };
 

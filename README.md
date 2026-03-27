@@ -126,3 +126,33 @@ The project uses an Freenove ESP32-S3 WROOM with a 8mb of PSRAM with the followi
 - **GND**: Ground.
 - **I/O (Signal)**: Connected to `GPIO 1`.
 - **Type**: Passive Buzzer (allows melody playback via `ezBuzzer`).
+
+## 4 Proxying Firebase Client
+You'll need to update a source file of the FirebaseClient library to run a proxy.
+Why a proxy? I encounter some 400 issues during running the requests. As I haven't more info of what's was wrong, I needed to see how the requests are being made.
+
+### How to proceed
+- Edit the file `FirebaseClient/src/core/AsyncClient/AsyncClient.h`
+- On line ~`935:20` rplace the following code:
+```aiignore
+sData->request.addRequestHeader(method, path, extras);
+        sData->request.addHostHeader(sData->request.getHost(true, &sData->response.val[resns::location]).c_str());
+```
+with
+```C++
+#ifdef  PROXY_ADDRESSS
+        const String fullUrl = url + path;
+        sData->request.val[reqns::url] = PROXY_ADDRESSS;
+        sData->request.addRequestHeader(method, path, extras);
+        sData->request.addHostHeader(url);
+#ifdef PROXY_PORT
+        sData->request.port = PROXY_PORT;
+#endif
+
+#else
+        sData->request.addRequestHeader(method, path, extras);
+        sData->request.addHostHeader(sData->request.getHost(true, &sData->response.val[resns::location]).c_str());
+#endif
+```
+
+- Now you jsut need to define the `PROXY_ADDRESSS` and `PROXY_PORT` macros .

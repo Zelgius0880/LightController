@@ -17,8 +17,13 @@
 
 #include "buzzer/task_buzzer.h"
 #include "leds/task_leds.h"
-
+#ifdef DEBUG_FIREBASE
+#define DEBUG_FIREBASE(...) LogEvent::post(__VA_ARGS__)
+#else
+#define DEBUG_FIREBASE(...)
+#endif
 extern QueueHandle_t lightControllerQueue;
+extern WiFiClientSecure sharedClient;
 
 void processAuth(AsyncResult &aResult);
 
@@ -29,34 +34,27 @@ void processList(AsyncResult &aResult);
 firebase_ns::FirebaseApp app;
 WiFiClientSecure client;
 AsyncClientClass aClient(client);
-HueApiClient api(BRIDGE_IP, 443, true);
+HueApiClient api(sharedClient, BRIDGE_IP, 443, true);
 FirebaseManager firebaseManager(app, aClient, api);
-UserAuth user_auth(FIREBASE_WEB_API_KEY, FIREBASE_EMAIL,FIREBASE_PASSWORD, 3000);
+UserAuth user_auth(FIREBASE_WEB_API_KEY, FIREBASE_EMAIL,FIREBASE_PASSWORD);
 
-AsyncResult _firestoreResult;
 
 [[noreturn]] void lightControllerTask(void *pvParameters) {
     esp_task_wdt_add(nullptr);
 
-    LightEvent receivedEvent;
-
     client.setInsecure();
-
-    LogEvent::post("Light controller task started\n");
+    client.setHandshakeTimeout(5);
+    client.setTimeout(5);
 
     initializeApp(aClient, app, getAuth(user_auth), processAuth, "🔐 authTask");
-    LogEvent::post("Initializing Firebase app..");
 
     LedEvent::blink(128, 128, 0, 0, 100);
     while (!app.ready()) {
         vTaskDelay(pdMS_TO_TICKS(500));
-        LogEvent::post(".");
         esp_task_wdt_reset();
     }
     LedEvent::off();
 
-    LogEvent::post("\n");
-    LogEvent::post("Firebase app initialized successfully\n");
     firebaseManager.begin();
 
     WebServerEvent::printLog("Firebase Manager Initialized\n");
@@ -70,35 +68,26 @@ AsyncResult _firestoreResult;
     }
     LedEvent::plain(0, 128, 0, 128);
 
-    WebServerEvent::printLog("Hue API Client Initialized\n");
     WebServerEvent::updateUsername(api.getUsername().c_str());
 
     BuzzerEvent::melody();
 
+    LightEvent receivedEvent{};
+
     for (;;) {
         esp_task_wdt_reset();
-        if (xQueueReceive(lightControllerQueue, &receivedEvent, pdMS_TO_TICKS(50))) {
-            // Handle outgoing data to Firebase
-            if (receivedEvent.type == LightEventType::SWITCH_PRESSED) {
-                static char uidBuffer[13];
-                snprintf(uidBuffer, sizeof(uidBuffer), "%012llx", receivedEvent.data.switchUid);
-                firebaseManager.querySwitch(uidBuffer);
+        firebaseManager.loop();
+        if (firebaseManager.ready()) {
+            if (xQueueReceive(lightControllerQueue, &receivedEvent, pdMS_TO_TICKS(50))) {
+                // Handle outgoing data to Firebase
+                if (receivedEvent.type == LightEventType::SWITCH_PRESSED) {
+                    static char uidBuffer[13];
+                    snprintf(uidBuffer, sizeof(uidBuffer), "%012llx", receivedEvent.data.switchUid);
+                    firebaseManager.querySwitch(uidBuffer);
+                }
             }
         }
-
-        firebaseManager.loop();
-
-        if (aClient.lastError().code() != 0) {
-            LogEvent::post("Firebase Error: %s (Code: %d)\n",
-                           aClient.lastError().message().c_str(),
-                           aClient.lastError().code());
-
-            aClient.stopAsync(true);
-            WebServerEvent::printLog("Network lost after SSL error. Waiting for reconnect...");
-            vTaskDelay(pdMS_TO_TICKS(5000));
-        } else {
-            portYIELD();
-        }
+        portYIELD();
     }
 }
 
@@ -140,9 +129,6 @@ void processAuth(AsyncResult &aResult) {
 
     if (aResult.available()) {
         WebServerEvent::printLog("task: %s, payload: %s\n", aResult.uid().c_str(), aResult.c_str());
-
-        // The information printed from Firebase.printf may be truncated because of limited buffer memory to reduce the stack usage,
-        // use Serial.println(aResult.c_str()) to print entire content.
     }
 }
 
@@ -153,26 +139,23 @@ void processSwitch(AsyncResult &aResult) {
         return;
 
     if (aResult.isEvent()) {
-        WebServerEvent::printLog("Event task: %s, msg: %s, code: %d\n", aResult.uid().c_str(),
-                                 aResult.appEvent().message().c_str(), aResult.appEvent().code());
+        DEBUG_FIREBASE("Event task: %s, msg: %s, code: %d\n", aResult.uid().c_str(),
+                       aResult.appEvent().message().c_str(), aResult.appEvent().code());
     }
 
     if (aResult.isDebug()) {
-        WebServerEvent::printLog("Debug task: %s, msg: %s\n", aResult.uid().c_str(), aResult.debug().c_str());
+        DEBUG_FIREBASE("Debug task: %s, msg: %s\n", aResult.uid().c_str(), aResult.debug().c_str());
     }
 
     if (aResult.isError()) {
-        WebServerEvent::printLog("Error task: %s, msg: %s, code: %d\n", aResult.uid().c_str(),
-                                 aResult.error().message().c_str(),
-                                 aResult.error().code());
+        DEBUG_FIREBASE("Error task: %s, msg: %s, code: %d\n", aResult.uid().c_str(),
+                       aResult.error().message().c_str(),
+                       aResult.error().code());
     }
 
     if (aResult.available()) {
-        WebServerEvent::printLog("task: %s, payload: %s\n", aResult.uid().c_str(), aResult.c_str());
+        DEBUG_FIREBASE("task: %s, payload: %s\n", aResult.uid().c_str(), aResult.c_str());
         firebaseManager.handleSwitchResult(aResult);
-
-        // The information printed from Firebase.printf may be truncated because of limited buffer memory to reduce the stack usage,
-        // use Serial.println(aResult.c_str()) to print entire content.
     }
 }
 
@@ -183,25 +166,22 @@ void processList(AsyncResult &aResult) {
         return;
 
     if (aResult.isEvent()) {
-        WebServerEvent::printLog("Event task: %s, msg: %s, code: %d\n", aResult.uid().c_str(),
-                                 aResult.appEvent().message().c_str(), aResult.appEvent().code());
+        DEBUG_FIREBASE("Event task: %s, msg: %s, code: %d\n", aResult.uid().c_str(),
+                       aResult.appEvent().message().c_str(), aResult.appEvent().code());
     }
 
     if (aResult.isDebug()) {
-        WebServerEvent::printLog("Debug task: %s, msg: %s\n", aResult.uid().c_str(), aResult.debug().c_str());
+        DEBUG_FIREBASE("Debug task: %s, msg: %s\n", aResult.uid().c_str(), aResult.debug().c_str());
     }
 
     if (aResult.isError()) {
-        WebServerEvent::printLog("Error task: %s, msg: %s, code: %d\n", aResult.uid().c_str(),
-                                 aResult.error().message().c_str(),
-                                 aResult.error().code());
+        DEBUG_FIREBASE("Error task: %s, msg: %s, code: %d\n", aResult.uid().c_str(),
+                       aResult.error().message().c_str(),
+                       aResult.error().code());
     }
 
     if (aResult.available()) {
-        WebServerEvent::printLog("task: %s, payload: %s\n", aResult.uid().c_str(), aResult.c_str());
+        DEBUG_FIREBASE("task: %s, payload: %s\n", aResult.uid().c_str(), aResult.c_str());
         firebaseManager.handleListResult(aResult);
-
-        // The information printed from Firebase.printf may be truncated because of limited buffer memory to reduce the stack usage,
-        // use Serial.println(aResult.c_str()) to print entire content.
     }
 }

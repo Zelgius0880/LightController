@@ -1,22 +1,19 @@
 #include <LittleFS.h>
 #include <WebServerHandler.h>
 
+#include "configuration.h"
 #include "index_html.h"
 #include "logger/task_logger.h"
 
 #include <rendering/task_image_rendering.h>
-#include "../../lib/ImageRenderer/ImageRenderer.h"
+#include <ImageRenderer.h>
+#include "esp_core_dump.h"
 
 extern QueueHandle_t renderingQueue;
 extern SemaphoreHandle_t fsMutex;
 
-struct PsramAllocator : Allocator {
-    virtual ~PsramAllocator() = default;
-
-    void *allocate(size_t size) override { return ps_malloc(size); }
-    void deallocate(void *ptr) override { free(ptr); }
-    void *reallocate(void *ptr, size_t new_size) override { return ps_realloc(ptr, new_size); }
-};
+#define STRINGIFY(x) #x
+#define TOSTRING(x) STRINGIFY(x)
 
 WebServerHandler::WebServerHandler(AsyncWebServer &server)
     : _server(server), _hueUsername(""), _errorBuffer{}, _logBuffer{} {
@@ -38,8 +35,8 @@ void WebServerHandler::addLogMessage(const char *msg) {
 }
 
 void WebServerHandler::setup() {
-    _server.on("/", HTTP_GET, [this](AsyncWebServerRequest *request) {
-        handleRoot(request);
+    _server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+        request->send(200, "text/html", index_html, processor);
     });
 
     _server.on("/status", HTTP_GET, [this](AsyncWebServerRequest *request) {
@@ -47,9 +44,10 @@ void WebServerHandler::setup() {
     });
 
 
-    _server.on("/upload", HTTP_POST, [](AsyncWebServerRequest *request) {
+    _server.on("/upload_image", HTTP_POST, [](AsyncWebServerRequest *request) {
                    request->send(200, "text/plain", "OK");
-               }, [this](AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len,
+               }, [this](AsyncWebServerRequest *request, const String &filename, size_t index, uint8_t *data,
+                         size_t len,
                          bool final) {
                    handleUpload(request, filename, index, data, len, final);
                });
@@ -84,18 +82,72 @@ void WebServerHandler::setup() {
     });
 
 
-    _server.on("/image.jpg", HTTP_GET, [this](AsyncWebServerRequest *request) {
-        handleImage(request);
+    _server.on("/image.jpg", HTTP_GET, [](AsyncWebServerRequest *request) {
+        if (LittleFS.exists("/image.jpg")) {
+            request->send(LittleFS, "/image.jpg", "image/jpeg");
+        } else {
+            request->send(404, "text/plain", "Image not found");
+        }
     });
 
     _server.on("/logs", HTTP_GET, [this](AsyncWebServerRequest *request) {
         handleLogs(request);
     });
-}
+    _server.on("/crashes", HTTP_GET, [](AsyncWebServerRequest *request) {
+        size_t addr = 0;
+        size_t size = 0;
 
+        if (esp_core_dump_image_get(&addr, &size) != ESP_OK || size == 0) {
+            request->send(200, "text/plain", "No core dump");
+            return;
+        }
 
-void WebServerHandler::handleRoot(AsyncWebServerRequest *request) {
-    request->send(200, "text/html", index_html);
+        AsyncWebServerResponse *response = request->beginChunkedResponse(
+            "application/octet-stream",
+            [addr, size](uint8_t *buffer, size_t maxLen, size_t index) -> size_t {
+                if (index >= size) return 0;
+
+                size_t toRead = std::min(maxLen, size - index);
+
+                if (esp_flash_read(NULL, buffer, addr + index, toRead) != ESP_OK) {
+                    return 0;
+                }
+
+                return toRead;
+            }
+        );
+
+        response->addHeader("Content-Disposition", "attachment; filename=core_dump.bin");
+        request->send(response);
+    });
+
+    _server.on("/clear_crashes", HTTP_GET, [](AsyncWebServerRequest *request) {
+        esp_err_t err = esp_core_dump_image_erase();
+
+        if (err == ESP_OK) {
+            request->send(200, "text/plain", "Core dump erased");
+        } else {
+            request->send(500, "text/plain", "Failed to erase core dump");
+        }
+    });
+
+    _server.on("/token_result", HTTP_GET, [](AsyncWebServerRequest *request) {
+        if (request->hasParam("code")) {
+            String code = request->getParam("code")->value();
+            ImageRendererEvent event{};
+            event.type = ImageRendererEventType::NETATMO_CODE;
+            strncpy(event.code, code.c_str(), sizeof(event.code) - 1);
+            event.code[sizeof(event.code) - 1] = '\0';
+
+            if (xQueueSend(renderingQueue, &event, pdMS_TO_TICKS(10)) == pdPASS) {
+                request->send(200, "text/plain", "Token negotiation started. You can close this tab.");
+            } else {
+                request->send(500, "text/plain", "Failed to send event to rendering task");
+            }
+        } else {
+            request->send(400, "text/plain", "Missing code parameter");
+        }
+    });
 }
 
 void WebServerHandler::handleStatus(AsyncWebServerRequest *request) const {
@@ -108,8 +160,15 @@ void WebServerHandler::handleStatus(AsyncWebServerRequest *request) const {
     doc["totalBytes"] = total;
     doc["usedBytes"] = psramInit() ? total - ESP.getFreePsram() : 0;
 
+    JsonObject netatmo = doc["netatmo"].to<JsonObject>();
+    netatmo["authenticated"] = _netatmoToken.accessToken.length() > 0;
+    netatmo["expires_in"] = _netatmoToken.expiresIn;
+    netatmo["creation_timestamp"] = _netatmoToken.creationTimestamp;
+    netatmo["valid"] = _netatmoToken.isValid();
+
     doc["fsTotal"] = LittleFS.totalBytes();
     doc["fsUsed"] = LittleFS.usedBytes();
+    doc["firmware"] = TOSTRING(FIRWARE_VERSION);
 
     doc["heapTotal"] = ESP.getHeapSize();
     doc["heapFree"] = ESP.getFreeHeap();
@@ -119,12 +178,11 @@ void WebServerHandler::handleStatus(AsyncWebServerRequest *request) const {
     request->send(200, "application/json", response);
 }
 
-void WebServerHandler::handleImage(AsyncWebServerRequest *request) {
-    if (LittleFS.exists("/image.jpg")) {
-        request->send(LittleFS, "/image.jpg", "image/jpeg");
-    } else {
-        request->send(404, "text/plain", "Image not found");
+String WebServerHandler::processor(const String &var) {
+    if (var == "NETATMO_CLIENT_ID") {
+        return NETATMO_CLIENT_ID;
     }
+    return String();
 }
 
 void WebServerHandler::handleLogs(AsyncWebServerRequest *request) const {

@@ -5,7 +5,7 @@ constexpr char index_html[] PROGMEM = R"rawliteral(
 <!DOCTYPE html>
 <html>
 <head>
-    <title>ESP32 Image Upload (v0.0.2)</title>
+    <title>ESP32 Image Upload</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link href="https://cdn.jsdelivr.net/npm/beercss@3.5.1/dist/cdn/beer.min.css" rel="stylesheet">
     <script type="module" src="https://cdn.jsdelivr.net/npm/beercss@3.5.1/dist/cdn/beer.min.js"></script>
@@ -28,7 +28,7 @@ constexpr char index_html[] PROGMEM = R"rawliteral(
         }
 
         img {
-            max-width: 90%;
+            max-width: 90%%;
             height: auto;
             border: 1px solid #ccc;
             margin-top: 20px;
@@ -67,18 +67,18 @@ constexpr char index_html[] PROGMEM = R"rawliteral(
             margin-bottom: 8px;
         }
 
-        #status, #error-log, #internal-status {
+        #status, #error-log, #internal-status, #firmware-version {
             margin-top: 20px;
         }
 
-        #status > span,#internal-status > span{
+        #status > span,#internal-status > span,#firmware-version > span{
             padding: 10px;
         }
 
         .chart-container {
             position: relative;
             height: 200px;
-            width: 100%;
+            width: 100%%;
             margin-top: 20px;
         }
     </style>
@@ -87,7 +87,7 @@ constexpr char index_html[] PROGMEM = R"rawliteral(
 <div class="container">
     <h4>Upload PNG Image</h4>
 
-    <form method="POST" action="/upload" enctype="multipart/form-data" class="grid cricle">
+    <form method="POST" action="/upload_image" enctype="multipart/form-data" class="grid cricle">
         <div class="field label prefix border s7">
             <i>attach_file</i>
             <input type="file" name="image" accept="image/jpeg">
@@ -103,12 +103,18 @@ constexpr char index_html[] PROGMEM = R"rawliteral(
     <div class="diagnostic">
         <h4>Diagnostic Section</h4>
         <div id="status">Checking connection...</div>
+        <div id="firmware-version">Firmware: Checking...</div>
         <div id="internal-status">Checking status...</div>
         <div id="error-log" class="error"></div>
 
         <h5>Hue Lights Test</h5>
         <button id="list-lights-button" onclick="listLights()">List Lights</button>
         <pre id="lights-list">Click the button to fetch lights...</pre>
+
+        <h5>Netatmo Authorization</h5>
+        <button class="button" onclick="authorizeNetatmo()">Authorize Netatmo</button>
+        <div id="netatmo-status"></div>
+        <pre id="netatmo-info"></pre>
 
         <h5>Last 10 Logs</h5>
         <pre id="logs-list">Fetching logs...</pre>
@@ -218,6 +224,15 @@ constexpr char index_html[] PROGMEM = R"rawliteral(
             });
     }
 
+    function authorizeNetatmo() {
+        const clientId = "%NETATMO_CLIENT_ID%";
+        const redirectUri = encodeURIComponent("http://" + window.location.host + "/token_result");
+        const scope = "read_station";
+        const state = Math.random().toString(36).substring(7);
+        const url = `https://api.netatmo.com/oauth2/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=${scope}&state=${state}`;
+        window.open(url, '_blank');
+    }
+
     function updateStatus() {
         fetch('/logs')
             .then(response => response.json())
@@ -245,12 +260,27 @@ constexpr char index_html[] PROGMEM = R"rawliteral(
                     statusElement.innerHTML = '<span class="error">Not authenticated with Hue Bridge</span>. Press the link button on the bridge.';
                 }
 
+                const netatmoStatusElement = document.getElementById('netatmo-status');
+                const netatmoInfoElement = document.getElementById('netatmo-info');
+                if (data.netatmo) {
+                    if (data.netatmo.authenticated) {
+                        netatmoStatusElement.innerHTML = '<span class="success">Netatmo Authenticated</span>';
+                        netatmoInfoElement.innerText = `Valid: ${data.netatmo.valid}\nExpires: ${new Date(data.netatmo.creation_timestamp * 1000 + data.netatmo.expires_in * 1000).toLocaleString()}`;
+                    } else {
+                        netatmoStatusElement.innerHTML = '<span class="error">Netatmo Not Authenticated</span>';
+                        netatmoInfoElement.innerText = "No token available.";
+                    }
+                }
+
+                if (data.firmware !== undefined) {
+                    document.getElementById('firmware-version').innerText = "Firmware: " + data.firmware;
+                }
 
                 if (data.totalBytes !== undefined && data.usedBytes !== undefined) {
                     const free = data.totalBytes - data.usedBytes;
                     const percent = (data.totalBytes > 0) ? (data.usedBytes / data.totalBytes * 100).toFixed(1) : 0;
                     document.getElementById('internal-status').innerHTML =
-                        `PSRAM: ${data.usedBytes} / ${data.totalBytes} bytes used (${percent}%) - <b>${free} bytes free</b>`;
+                        `PSRAM: ${data.usedBytes} / ${data.totalBytes} bytes used (${percent}&#x25) – <b>${free} bytes free</b>`;
                 }
 
                 if (data.fsTotal !== undefined && data.fsUsed !== undefined) {
@@ -263,7 +293,7 @@ constexpr char index_html[] PROGMEM = R"rawliteral(
                         fsStatus.id = fsStatusId;
                         document.getElementById('internal-status').appendChild(fsStatus);
                     }
-                    fsStatus.innerHTML = `LittleFS: ${data.fsUsed} / ${data.fsTotal} bytes used (${fsPercent}%) - <b>${fsFree} bytes free</b>`;
+                    fsStatus.innerHTML = `LittleFS: ${data.fsUsed} / ${data.fsTotal} bytes used (${fsPercent}&#x25) - <b>${fsFree} bytes free</b>`;
                 }
 
                 if (data.heapTotal !== undefined && data.heapFree !== undefined) {
@@ -278,7 +308,7 @@ constexpr char index_html[] PROGMEM = R"rawliteral(
                         fsStatus.id = heapStatusId;
                         document.getElementById('internal-status').appendChild(fsStatus);
                     }
-                    fsStatus.innerHTML = `Heap: ${heapUsed} / ${heapTotal} bytes used (${heapPercent}%) - <b>${heapFree} bytes free</b>`;
+                    fsStatus.innerHTML = `Heap: ${heapUsed} / ${heapTotal} bytes used (${heapPercent}&#x25) - <b>${heapFree} bytes free</b>`;
                 }
 
                 addDataPoint(new Date().toLocaleTimeString(), data.usedBytes || 0, data.fsUsed || 0, (data.heapTotal - data.heapFree) || 0);

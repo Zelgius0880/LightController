@@ -15,8 +15,9 @@ ImageRenderer::ImageRenderer() : _canvas(&_tft) {
     instance = this;
 }
 
-bool ImageRenderer::renderImage() {
+bool ImageRenderer::renderImage(const NetatmoMeasureResponse &tempMain, const NetatmoMeasureResponse &tempModule) {
     uint16_t w, h;
+
 
     if (xSemaphoreTake(fsMutex, pdMS_TO_TICKS(1000))) {
         const JRESULT result = TJpgDec.getFsJpgSize(&w, &h, IMAGE_FILENAME, LittleFS);
@@ -34,6 +35,8 @@ bool ImageRenderer::renderImage() {
 
     // 1. Prepare Canvas in PSRAM
     _canvas.setAttribute(PSRAM_ENABLE, true);
+    _canvas.setColorDepth(16);
+
     if (!_canvas.createSprite(w, h)) {
         WebServerEvent::printLog("Failed to create Sprite");
         LogEvent::post("Failed to create Sprite");
@@ -58,20 +61,19 @@ bool ImageRenderer::renderImage() {
     int bx = (w - bw) / 2;
     int by = 30;
 
-    drawAlphaRoundRect(
-        _canvas,
-        bx, by,
-        bw, bh,
-        12, // radius
-        TFT_WHITE, // color
-        0.7f // alpha
-    );
+    // 4. Draw Temperature Charts
+    if (tempMain.size > 0) {
+        // BRG
+        drawTemperatureChart(_canvas, tempMain, "Inside", 20, 50, 300, 150, TFT_WHITE, _canvas.color24to16(0x00ff00),
+                             0.3f);
+    }
 
-    _canvas.setTextColor(TFT_BLACK);
-    _canvas.setTextDatum(MC_DATUM);
-    _canvas.drawString("Hello World", bx + (bw / 2), by + (bh / 2), 4);
+    if (tempModule.size > 0) {
+        drawTemperatureChart(_canvas, tempModule, "Outside", 20, 220, 300, 150, TFT_WHITE,
+                             _canvas.color24to16(0x00ff00), 0.3f);
+    }
 
-    // 4. Encode back to JPEG (output to PSRAM)
+    // 5. Encode back to JPEG (output to PSRAM)
     if (_jpgOutput) free(_jpgOutput);
     _jpgOutput = static_cast<uint8_t *>(ps_malloc(w * h / 4)); // Guessing 25% compression size
 
@@ -96,9 +98,9 @@ uint16_t ImageRenderer::alphaBlend565(const uint16_t fg, uint16_t bg, const floa
     uint8_t g_bg = (bg >> 5) & 0x3F;
     uint8_t b_bg = bg & 0x1F;
 
-    uint8_t r = r_fg * alpha + r_bg * (1 - alpha);
-    uint8_t g = g_fg * alpha + g_bg * (1 - alpha);
-    uint8_t b = b_fg * alpha + b_bg * (1 - alpha);
+    const uint8_t r = r_fg * alpha + r_bg * (1 - alpha);
+    const uint8_t g = g_fg * alpha + g_bg * (1 - alpha);
+    const uint8_t b = b_fg * alpha + b_bg * (1 - alpha);
 
     return (r << 11) | (g << 5) | b;
 }
@@ -162,5 +164,96 @@ void ImageRenderer::drawAlphaRoundRect(
 
             buf[py * canvasW + px] = (r << 11) | (g << 5) | b;
         }
+    }
+}
+
+void ImageRenderer::drawTemperatureChart(
+    TFT_eSprite &canvas,
+    const NetatmoMeasureResponse &temperature,
+    const String &title,
+    const uint16_t x, const uint16_t y, const uint16_t w, const uint16_t h,
+    const uint32_t backgroundColor,
+    const uint32_t lineColor,
+    const float alpha
+) {
+    if (temperature.size < 1) return;
+
+    drawAlphaRoundRect(canvas, x, y, w, h, 8, backgroundColor, alpha);
+
+    if (temperature.size < 2) {
+        // Just draw the current temp if not enough data for chart
+        canvas.setTextColor(TFT_BLACK);
+        canvas.setTextDatum(TL_DATUM);
+        canvas.drawString(title, x + w - 50, y + 10, 2);
+        canvas.setTextDatum(MC_DATUM);
+        canvas.drawString(String(temperature.values[0], 1) + "°C", x + w / 2, y + h / 2, 4);
+        return;
+    }
+
+    double minVal = temperature.values[0];
+    double maxVal = temperature.values[0];
+
+    for (int i = 1; i < temperature.size; i++) {
+        if (temperature.values[i] < minVal) minVal = temperature.values[i];
+        if (temperature.values[i] > maxVal) maxVal = temperature.values[i];
+    }
+    double minTemperature = minVal;
+    double maxTemperature = maxVal;
+
+
+    if (maxVal - minVal < 1.0) {
+        maxVal = minVal + 1.0;
+    }
+
+    // Add some padding to min/max
+    minVal -= 1.0;
+    maxVal += 1.0;
+
+    const int chartX = x + 35; // Leave space for Y axis labels
+    const int chartY = y + 30; // Leave space for Title and current temp
+    const int chartW = w - 50;
+    const int chartH = h - 50; // Leave space for X axis
+
+    auto getY = [&](const double val) -> int {
+        return chartY + chartH - static_cast<int>((val - minVal) / (maxVal - minVal) * chartH);
+    };
+
+    canvas.setTextColor(TFT_BLACK);
+
+    // Draw Title
+    canvas.setTextDatum(TR_DATUM);
+    canvas.setFreeFont(&FreeSans12pt7b);
+    canvas.drawString(title, x + w - 10, y + 5);
+
+    // Draw current temperature (last record) in bigger font
+    canvas.setTextDatum(MC_DATUM);
+    canvas.setFreeFont(&FreeSansBold18pt7b);
+    canvas.drawString(String(temperature.values[temperature.size - 1], 1) + "°C", x + w / 2, y + 20);
+
+    // Draw Axis
+    canvas.drawLine(chartX, chartY, chartX, chartY + chartH, TFT_BLACK); // Y axis
+    canvas.drawLine(chartX, chartY + chartH, chartX + chartW, chartY + chartH, TFT_BLACK); // X axis
+
+    // Y Axis Labels
+    canvas.setTextDatum(MR_DATUM);
+    canvas.setFreeFont(&FreeSans9pt7b);
+    canvas.drawString(String(maxTemperature, 1), chartX - 5, chartY);
+    canvas.drawString(String(minTemperature, 1), chartX - 5, chartY + chartH - 10);
+
+    // X Axis Labels
+    canvas.setTextDatum(TC_DATUM);
+    canvas.setFreeFont(&FreeSans9pt7b);
+    canvas.drawString("-24h", chartX, chartY + chartH + 5);
+    canvas.drawString("0h", chartX + chartW, chartY + chartH + 5);
+
+    // Draw Line Chart
+    for (int i = 0; i < temperature.size - 1; i++) {
+        const int x1 = chartX + (i * chartW) / (temperature.size - 1);
+        const int y1 = getY(temperature.values[i]);
+        const int x2 = chartX + ((i + 1) * chartW) / (temperature.size - 1);
+        const int y2 = getY(temperature.values[i + 1]);
+
+        canvas.drawLine(x1, y1, x2, y2, lineColor);
+        canvas.drawLine(x1, y1 + 1, x2, y2 + 1, lineColor); // thicker line
     }
 }

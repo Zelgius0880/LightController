@@ -11,6 +11,7 @@
 
 enum class BuzzerType {
     BIP,
+    BIP2,
     MELODY
 };
 
@@ -21,6 +22,7 @@ struct BuzzerEvent {
 
     static bool post(BuzzerType type, uint32_t frequency = 1000, uint32_t duration = 100);
     static void bip(uint32_t frequency = 1000, uint32_t duration = 100);
+    static void bip2(uint32_t frequency = 1000, uint32_t duration = 100);
     static void melody();
 };
 

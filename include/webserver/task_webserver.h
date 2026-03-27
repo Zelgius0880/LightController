@@ -8,7 +8,8 @@ enum class WebServerEventType {
     POST_ERROR,
     CLEAR_ERROR,
     UPDATE_USERNAME,
-    PRINT_LOG
+    PRINT_LOG,
+    UPDATE_NETATMO_TOKEN
 };
 
 struct WebServerEvent {
@@ -19,6 +20,7 @@ struct WebServerEvent {
     static void postError(const char* format, ...);
     static void printLog(const char* format, ...);
     static void updateUsername(const char* username);
+    static void updateNetatmoToken(const char* accessToken, const char* refreshToken, long expiresIn, unsigned long creationTimestamp);
     static void clearError();
 };
 

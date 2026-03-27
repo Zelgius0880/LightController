@@ -4,6 +4,7 @@
 
 #include <logger/task_logger.h>
 #include <Arduino.h>
+#include <esp_task_wdt.h>
 
 // We send a pointer to the string, and a flag telling us if it's in PSRAM
 
@@ -15,8 +16,11 @@ extern QueueHandle_t logQueue;
 
     Serial.println("Logger task started");
 
+    esp_task_wdt_add(nullptr);
+
     for (;;) {
-        if (xQueueReceive(logQueue, &packet, portMAX_DELAY)) {
+        esp_task_wdt_add(nullptr);
+        if (xQueueReceive(logQueue, &packet, 0)) {
             // 1. Print the message
             if (packet.payload != nullptr) {
                 Serial.print(packet.payload);
@@ -27,11 +31,13 @@ extern QueueHandle_t logQueue;
                 }
             }
         }
+
+        taskYIELD();
     }
 }
 
 // Helper for "Fire and Forget" logging of large strings
-void LogEvent::post(const char* format, ...) {
+void LogEvent::post(const char *format, ...) {
     // Allocate space in the 8MB PSRAM so we don't fragment Internal RAM
     // 1. Allocate a buffer in the 8MB PSRAM (not Internal RAM!)
     // 256 bytes is usually plenty for a single log line.

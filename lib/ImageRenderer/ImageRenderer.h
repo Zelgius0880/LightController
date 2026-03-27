@@ -7,11 +7,13 @@
 
 #include <TFT_eSPI.h>
 #include <JPEGenc.h>
+#include "../NetatmoClient/NetatmoModels.h"
 
 class ImageRenderer {
 public:
     ImageRenderer();
-    bool renderImage();
+
+    bool renderImage(const NetatmoMeasureResponse &tempMain, const NetatmoMeasureResponse &tempModule);
 
     uint8_t *getJpgOutput() const { return _jpgOutput; }
     size_t getJpgSize() const { return _jpgSize; }
@@ -20,11 +22,21 @@ public:
 private:
     TFT_eSPI _tft;
     TFT_eSprite _canvas;
-    JPEGENC _encoder;
+    JPEGENC _encoder{};
 
     uint8_t *_jpgOutput = nullptr;
     size_t _jpgSize = 0;
 
+
+    static void drawTemperatureChart(
+        TFT_eSprite &canvas,
+        const NetatmoMeasureResponse &temperature,
+        const String &title,
+        uint16_t x, uint16_t y, uint16_t w, uint16_t h,
+        uint32_t backgroundColor,
+        uint32_t lineColor,
+        float alpha
+    );
 
     static uint16_t alphaBlend565(uint16_t fg, uint16_t bg, float alpha);
 

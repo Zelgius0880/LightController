@@ -8,16 +8,14 @@
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <webserver/task_webserver.h>
-#include <logger/task_logger.h>
 #include <LittleFS.h>
 
 #include "configuration.h"
-#include "allocator/psram_allocator.h"
 #include "leds/task_leds.h"
 
 extern SemaphoreHandle_t fsMutex;
 
-HueApiClient::HueApiClient(const String &host, const int port, const bool https) {
+HueApiClient::HueApiClient(WiFiClientSecure& client, const String &host, const int port, const bool https) : _secureClient(client) {
     _host = host;
     _port = port;
     _https = https;
@@ -28,7 +26,7 @@ void HueApiClient::setApiKey(const String &apiKey) {
 }
 
 Hue::AuthResponse HueApiClient::authenticate(const String &deviceType, bool generateClientKey) {
-    JsonDocument doc;
+    JsonDocument doc(&allocator);
     doc["devicetype"] = deviceType;
     if (generateClientKey) {
         doc["generateclientkey"] = true;
@@ -121,27 +119,27 @@ void HueApiClient::handleAuthentication() {
                 WebServerEvent::clearError();
 
                 if (saveCredentials(_username, _clientKey)) {
-                    LogEvent::post("Credentials saved successfully\n");
+                    HUE_LOG("Credentials saved successfully\n");
                 }
 
                 LedEvent::plain(0, 128, 0); // Green for success
-                LogEvent::post("Authenticated: %s\n", _username.c_str());
+                HUE_LOG("Authenticated: %s\n", _username.c_str());
             } else if (!authResponse.errors.empty()) {
                 if (authResponse.errors[0].type == 101) {
                     // Link button not pressed
                     LedEvent::plain(128, 128, 0); // Orange/Yellow for alert
-                    LogEvent::post("Press the link button...\n");
+                    HUE_LOG("Press the link button...\n");
                     WebServerEvent::postError("Press the link button on the bridge");
                 } else {
                     // Other error
                     LedEvent::plain(128, 0, 0); // Red for error
-                    LogEvent::post("Auth Error: %s\n", authResponse.errors[0].description.c_str());
+                    HUE_LOG("Auth Error: %s\n", authResponse.errors[0].description.c_str());
                     WebServerEvent::postError(authResponse.errors[0].description.c_str());
                 }
             } else if (authResponse.status != 200) {
                 // HTTP error or something went wrong
                 LedEvent::plain(128, 0, 0); // Red for error
-                LogEvent::post("Auth HTTP Status: %d\n", authResponse.status);
+                HUE_LOG("Auth HTTP Status: %d\n", authResponse.status);
                 WebServerEvent::postError("HTTP Error: %d", authResponse.status);
             }
         }
@@ -174,14 +172,14 @@ bool HueApiClient::loadCredentials() {
         xSemaphoreGive(fsMutex);
     }
     if (error) {
-        LogEvent::post("deserializeJson error\n");
+        HUE_LOG("deserializeJson error\n");
         return false;
     }
 
     _username = doc["username"].as<String>();
     _clientKey = doc["clientkey"].as<String>();
 
-    LogEvent::post("User name %s\n", _username.c_str());
+    HUE_LOG("User name %s\n", _username.c_str());
 
     if (_username.length() > 0) {
         setApiKey(_username);

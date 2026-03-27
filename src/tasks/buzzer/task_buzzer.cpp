@@ -30,6 +30,17 @@ int fireballMelody[] = {
 // For this specific sound effect, a faster tempo works better
 int fireballTempo = 240;
 
+// Mario Coin Get Melody
+// The coin sound is a quick B5 followed by a sustained E6
+int coinMelody[] = {
+    NOTE_B5, 16,  // Very short first note
+    NOTE_E6, 4    // Longer, ringing second note
+};
+
+// High tempo for that "instant" arcade feel
+int coinTempo = 180;
+
+
 void playMelody(const int *melodyArray, int count, int tempoValue) {
     int notesCount = count / 2;
     int wholenote = (60000 * 4) / tempoValue;
@@ -70,6 +81,8 @@ void playMelody(const int *melodyArray, int count, int tempoValue) {
             if (xQueueReceive(buzzerQueue, &event, pdMS_TO_TICKS(10))) {
                 if (event.type == BuzzerType::BIP) {
                     playMelody(fireballMelody, sizeof(fireballMelody) / sizeof(fireballMelody[0]), fireballTempo);
+                } else if (event.type == BuzzerType::BIP2) {
+                    playMelody(coinMelody, sizeof(coinMelody) / sizeof(coinMelody[0]), coinTempo);
                 } else if (event.type == BuzzerType::MELODY) {
                     playMelody(melody, sizeof(melody) / sizeof(melody[0]), tempo);
                 }
@@ -96,8 +109,12 @@ bool BuzzerEvent::post(BuzzerType type, uint32_t frequency, uint32_t duration) {
     return true;
 }
 
-void BuzzerEvent::bip(uint32_t frequency, uint32_t duration) {
+void BuzzerEvent::bip(const uint32_t frequency, const uint32_t duration) {
     post(BuzzerType::BIP, frequency, duration);
+}
+
+void BuzzerEvent::bip2(const uint32_t frequency, const uint32_t duration) {
+    post(BuzzerType::BIP2, frequency, duration);
 }
 
 void BuzzerEvent::melody() {
