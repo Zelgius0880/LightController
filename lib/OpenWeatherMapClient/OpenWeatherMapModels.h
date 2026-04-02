@@ -13,12 +13,14 @@ struct WeatherData {
 };
 
 struct OWMForecastResponse {
-    std::vector<WeatherData> forecast;
+    WeatherData forecast [7];
+    uint8_t count;
 
     static OWMForecastResponse fromJson(const JsonDocument& doc) {
         OWMForecastResponse response;
         JsonArrayConst list = doc["list"];
         if (list) {
+            response.count = 0;
             for (JsonObjectConst item : list) {
                 WeatherData data;
                 data.dt = item["dt"];
@@ -36,7 +38,9 @@ struct OWMForecastResponse {
                     data.weatherId = 800; // Default to clear sky if missing
                 }
 
-                response.forecast.push_back(data);
+                response.forecast[response.count] = data;
+                ++response.count;
+
             }
         }
         return response;

@@ -93,28 +93,28 @@ parameter:
     Height  :   The height of the picture
     Color   :   Whether the picture is inverted
 ******************************************************************************/
-void Paint_NewImage(UBYTE *image, UWORD Width, UWORD Height, UWORD Rotate, UWORD Color) {
+void Paint_NewImage(UBYTE *image, UWORD width, UWORD height, UWORD rotate, UWORD color) {
     Paint.Image = NULL;
     Paint.Image = image;
 
-    Paint.WidthMemory = Width;
-    Paint.HeightMemory = Height;
-    Paint.Color = Color;
+    Paint.WidthMemory = width;
+    Paint.HeightMemory = height;
+    Paint.Color = color;
     Paint.Scale = 2;
-    Paint.WidthByte = (Width % 8 == 0) ? (Width / 8) : (Width / 8 + 1);
-    Paint.HeightByte = Height;
+    Paint.WidthByte = (width % 8 == 0) ? (width / 8) : (width / 8 + 1);
+    Paint.HeightByte = height;
     //    printf("WidthByte = %d, HeightByte = %d\r\n", Paint.WidthByte, Paint.HeightByte);
     //    printf(" EPD_WIDTH / 8 = %d\r\n",  122 / 8);
 
-    Paint.Rotate = Rotate;
+    Paint.Rotate = rotate;
     Paint.Mirror = MIRROR_NONE;
 
-    if (Rotate == ROTATE_0 || Rotate == ROTATE_180) {
-        Paint.Width = Width;
-        Paint.Height = Height;
+    if (rotate == ROTATE_0 || rotate == ROTATE_180) {
+        Paint.Width = width;
+        Paint.Height = height;
     } else {
-        Paint.Width = Height;
-        Paint.Height = Width;
+        Paint.Width = height;
+        Paint.Height = width;
     }
 }
 

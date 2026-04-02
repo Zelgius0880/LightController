@@ -35,13 +35,6 @@ The ESP32 firmware uses `include/configuration.h` for its credentials. Ensure th
 #ifndef CONFIG_H
 #define CONFIG_H
 
-// Firebase Credentials
-#define FIREBASE_PASSWORD "your_firebase_password"
-#define FIREBASE_EMAIL "your_firebase_email"
-#define FIREBASE_PROJECT_ID "your_project_id"
-#define FIREBASE_WEB_API_KEY "your_api_key"
-#define FIREBASE_STORAGE_BUCKET "your_project_id.appspot.com"
-
 // WiFi Credentials
 #define WIFI_SSID  "Your_SSID"
 #define PASSWORD  "Your_WiFi_Password"
@@ -50,6 +43,20 @@ The ESP32 firmware uses `include/configuration.h` for its credentials. Ensure th
 #define BRIDGE_IP "192.168.1.xxx"
 #define CREDENTIALS_FILE  "/hue_creds.json"
 
+// Database 
+#define DB_PATH "lights.db"
+
+// Open Weather Map
+#define OWM_LON "12345" 
+#define OWM_LAT "12345"
+#define OWM_API_KEY "12345"
+
+// Netatmo
+#define NETATMO_MAC "XX:XX:XX:XX" // MAC of the station
+#define NETATMO_MODULE_ID "XX:XX:XX:XX" // MAC of the module
+#define NETATMO_TOKEN_FILE "token.json" // The location, in LittleFS of the OAuth Token
+#define NETATMO_CLIENT_SECRET "XXXX"
+#define NETATMO_CLIENT_ID "XXXX"
 #endif // CONFIG_H
 ```
 
@@ -68,17 +75,23 @@ The project uses PlatformIO for ESP32-S3 development. The `platformio.ini` is co
 
 #### Build Flags
 Key build flags used in the project:
-- `-D BOARD_HAS_PSRAM`: Enables PSRAM support.
-- `-DENABLE_USER_AUTH`: Enables Firebase user authentication.
-- `-DENABLE_FIRESTORE`: Enables Firestore support in the FirebaseClient.
-- `-DENABLE_FIRESTORE_QUERY`: Enables Firestore structured query support.
+- `-D BOARD_HAS_PSRAM`; Enables PSRAM support.
+- `-mfix-esp32-psram-cache-issue`
+- `-DFIRWARE_VERSION="0.0.1-ota03"`
+- `-DCONFIG_SPIRAM_SUPPORT`
+- `-DELEGANTOTA_USE_ASYNC_WEBSERVER=1` ; OTA Web site 
+- `-D CONFIG_ESP_COREDUMP_ENABLE=1` ; Core dump handling
+- `-D CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF=1`
+- `-D CONFIG_ESP_COREDUMP_CHECKSUM=1`
+- `-D CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=1`
+- `-D ENABLE_NETATMO` ; If defined, the rederer task will call Netatmo APIs
+- `-D ENABLE_OWM` ; If defined, the rederer task will call Open Weather Map APIs
+
 
 #### Dependencies
 The project relies on several external libraries:
-- `FirebaseClient`: For Firestore and Auth interactions.
 - `ArduinoJson`: For parsing API responses.
 - `ESPAsyncWebServer` & `AsyncTCP`: For the local web server.
-- `TFT_eSPI` & `TJpg_Decoder`: For display and image rendering.
 
 ## 2. Data Migration
 

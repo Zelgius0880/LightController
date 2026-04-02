@@ -16,11 +16,6 @@ bool LightsDatabaseManager::begin() {
         file.close();
     }
 
-    /*if (!LittleFS.exists(String(path)+"-journal")){
-        File file = LittleFS.open(String(path)+"-journal", FILE_WRITE);
-        file.close();
-    }*/
-
     sqlite3_initialize();
 
     if (sqlite3_open(("/littlefs/" + path).c_str(), &_db) != SQLITE_OK) {

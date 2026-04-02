@@ -198,7 +198,6 @@ void WebServerHandler::setup() {
                            xSemaphoreGive(fsMutex);
                        }
 
-                       // CRITICAL: Always free PSRAM after the import attempt
                        free(_importBuffer);
                        _importBuffer = nullptr;
                        _importBufferLen = 0;

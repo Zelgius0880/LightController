@@ -8,11 +8,6 @@
 #include <EPD_13in3e.h>
 #include <GUI_Paint.h>
 
-#define STBI_MALLOC ps_malloc
-#define STBI_REALLOC ps_realloc
-#define STBI_FREE free
-#define STBI_NO_STDIO
-#define STB_IMAGE_IMPLEMENTATION
 #include <LittleFS.h>
 
 #include "assets/clear_day.h"
@@ -89,7 +84,7 @@ bool ImageRenderer::renderImage(
     }
 
 
-    if (!owmForecast.forecast.empty()) {
+    if (!owmForecast.count > 0) {
         drawWeatherForecast(owmForecast, 895, 410 , 700, 150);
     }
 
@@ -363,10 +358,10 @@ void ImageRenderer::drawWeatherForecast(
     const OWMForecastResponse &forecast,
     const uint16_t x, const uint16_t y, const uint16_t w, const uint16_t h
 ) {
-    if (forecast.forecast.empty()) return;
+    if (forecast.count == 0) return;
 
     const int padding = 5;
-    const int count = std::min((int) forecast.forecast.size(), 7);
+    const int count = std::min((int) forecast.count, 7);
     const int itemWidth = (w - 2 * padding) / count;
 
     // Current time for "Today" check

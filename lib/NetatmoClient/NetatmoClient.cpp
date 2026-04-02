@@ -163,23 +163,6 @@ int NetatmoClient::getLast24hPressure(const String& moduleId, NetatmoMeasureResp
 }
 
 int NetatmoClient::getLast24hHumidity(NetatmoMeasureResponse& response) {
-    MeasureParams p;
-    p.deviceId = String(NETATMO_MAC);
-    p.scale = "30min";      // request the most recent sample
-    const unsigned long now = timeClient.getEpochTime();
-    p.dateEnd = now;
-    p.dateBegin = now > 21600UL ? static_cast<long>(now - 86400UL) : 0; // last 1h window
-    p.optimize = true;
-    p.realTime = true;
-    p.type = "humidity";
-
-    const int status = getMeasure(p, response);
-    response.isModule = false;
-    // Keep only the latest value if multiple were returned
-    if (status == 200 && response.size > 1) {
-        const double last = response.values[response.size - 1];
-        response.values[0] = last;
-        response.size = 1;
-    }
-    return status;
+    MeasureParams p = makeLast24hParams("humidity", "");
+    return getMeasure(p, response);
 }

@@ -19,11 +19,7 @@ WebServerHandler handler(server);
 unsigned long ota_progress_millis = 0;
 
 
-void onOTAStart() {
-    // Log when OTA has started
-    Serial.println("OTA update started!");
-    // <Add your own code here>
-}
+void onOTAStart() {}
 
 void onOTAProgress(size_t current, size_t final) {
     // Log every 1 second
@@ -40,7 +36,6 @@ void onOTAEnd(bool success) {
     } else {
         Serial.println("There was an error during OTA update!");
     }
-    // <Add your own code here>
 }
 
 
