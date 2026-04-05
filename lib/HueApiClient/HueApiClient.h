@@ -5,6 +5,8 @@
 #ifndef LIGHTCONTROLLER_HUEAPICLIENT_H
 #define LIGHTCONTROLLER_HUEAPICLIENT_H
 
+//#define DEBUG_HUE
+//#define DEBUG 1
 
 #include <Arduino.h>
 #include <ArduinoJson.h>

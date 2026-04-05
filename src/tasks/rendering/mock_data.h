@@ -60,7 +60,6 @@ inline void populateMocks(
 #endif
 #ifndef ENABLE_OWM
     // OWM Forecast - 5 days
-    owmForecast.forecast.clear();
     const long now = timeClient.getEpochTime(); // Fixed timestamp for consistency
 
     const int weatherIds[] = {800, 801, 500, 803, 800, 300, 700};
@@ -71,10 +70,11 @@ inline void populateMocks(
         data.tempMax = 15.0 + i;
         data.pop = (i == 2) ? 0.8 : 0.1; // High precipitation probability on day 3
         data.weatherId = weatherIds[i];
-        owmForecast.forecast.push_back(data);
+        owmForecast.forecast[i] = data;
     }
-}
+    owmForecast.count = 7;
 #endif
+}
 
 #endif // MOCK_DATA_H
 #endif // MOCK_DATA_H

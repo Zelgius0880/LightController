@@ -83,25 +83,6 @@
 #include "fonts.h"
 
 /**
- * Image attributes
-**/
-typedef struct {
-    UBYTE *Image;
-    UWORD Width;
-    UWORD Height;
-    UWORD WidthMemory;
-    UWORD HeightMemory;
-    UWORD Color;
-    UWORD Rotate;
-    UWORD Mirror;
-    UWORD WidthByte;
-    UWORD HeightByte;
-    UWORD Scale;
-} PAINT;
-
-extern PAINT Paint;
-
-/**
  * Display rotate
 **/
 #define ROTATE_0            0
@@ -132,8 +113,12 @@ typedef enum {
 #define FONT_FOREGROUND     BLACK
 #define FONT_BACKGROUND     WHITE
 
+#ifndef TRUE
 #define TRUE 1
+#endif
+#ifndef FALSE
 #define FALSE 0
+#endif
 
 //4 Gray level
 #define  GRAY1 0x03 //Blackest
@@ -198,73 +183,68 @@ typedef enum {
  * Custom structure of a time attribute
 **/
 typedef struct {
-    UWORD Year; //0000
-    UBYTE Month; //1 - 12
-    UBYTE Day; //1 - 30
-    UBYTE Hour; //0 - 23
-    UBYTE Min; //0 - 59
-    UBYTE Sec; //0 - 59
+    UWORD year; //0000
+    UBYTE month; //1 - 12
+    UBYTE day; //1 - 30
+    UBYTE hour; //0 - 23
+    UBYTE min; //0 - 59
+    UBYTE sec; //0 - 59
 } PAINT_TIME;
 
-extern PAINT_TIME sPaint_time;
+class GuiPaint {
+public:
+    GuiPaint();
 
-//init and Clear
-void Paint_NewImage(UBYTE *image, UWORD Width, UWORD Height, UWORD Rotate, UWORD Color);
+    void newImage(UBYTE *image, UWORD width, UWORD height, UWORD rotate, UWORD color);
+    void selectImage(UBYTE *image);
+    void setRotate(UWORD rotate);
+    void setMirroring(UBYTE mirror);
+    void setPixel(UWORD xPoint, UWORD yPoint, UWORD color) const;
+    void setScale(UBYTE scale);
+    void clear(UWORD color) const;
+    void clearWindows(UWORD xStart, UWORD yStart, UWORD xEnd, UWORD yEnd, UWORD color) const;
 
-void Paint_SelectImage(UBYTE *image);
+    void drawPoint(UWORD xPoint, UWORD yPoint, UWORD color, DOT_PIXEL dotPixel, DOT_STYLE dotFillWay) const;
+    void drawLine(UWORD xStart, UWORD yStart, UWORD xEnd, UWORD yEnd, UWORD color, DOT_PIXEL lineWidth, LINE_STYLE lineStyle) const;
+    void drawRectangle(UWORD xStart, UWORD yStart, UWORD xEnd, UWORD yEnd, UWORD color, DOT_PIXEL lineWidth, DRAW_FILL drawFill) const;
+    void drawCircle(UWORD xCenter, UWORD yCenter, UWORD radius, UWORD color, DOT_PIXEL lineWidth, DRAW_FILL drawFill) const;
 
-void Paint_SetRotate(UWORD Rotate);
+    void drawChar(uint16_t xStart, uint16_t yStart, char asciiChar, const sFONT *font, uint16_t colorForeground, uint16_t colorBackground) const;
+    void drawString(uint16_t xStart, uint16_t yStart, const String &pString, const sFONT *font, uint16_t colorForeground, uint16_t
+                    colorBackground, PaintTextOrientation orientation = TEXT_TL) const;
 
-void Paint_SetMirroring(UBYTE mirror);
-
-void Paint_SetPixel(UWORD Xpoint, UWORD Ypoint, UWORD Color);
-
-void Paint_SetScale(UBYTE scale);
-
-void Paint_Clear(UWORD Color);
-
-void Paint_ClearWindows(UWORD Xstart, UWORD Ystart, UWORD Xend, UWORD Yend, UWORD Color);
-
-//Drawing
-void Paint_DrawPoint(UWORD Xpoint, UWORD Ypoint, UWORD Color, DOT_PIXEL Dot_Pixel, DOT_STYLE Dot_FillWay);
-
-void Paint_DrawLine(UWORD Xstart, UWORD Ystart, UWORD Xend, UWORD Yend, UWORD Color, DOT_PIXEL Line_width,
-                    LINE_STYLE Line_Style);
-
-void Paint_DrawRectangle(UWORD Xstart, UWORD Ystart, UWORD Xend, UWORD Yend, UWORD Color, DOT_PIXEL Line_width,
-                         DRAW_FILL Draw_Fill);
-
-void Paint_DrawCircle(UWORD X_Center, UWORD Y_Center, UWORD Radius, UWORD Color, DOT_PIXEL Line_width,
-                      DRAW_FILL Draw_Fill);
-
-//Display string
-void Paint_DrawChar(UWORD Xstart, UWORD Ystart, const char Acsii_Char, sFONT *Font, UWORD Color_Foreground,
-                    UWORD Color_Background);
+    void drawString(const String &pString, const uint16_t xStart, const uint16_t yStart, const sFONT *font, const UWORD colorForeground, const PaintTextOrientation orientation = TEXT_TL) const {
+        drawString(xStart, yStart, pString, font, colorForeground, colorForeground, orientation);
+    }
 
 
-void Paint_DrawString(UWORD xStart, UWORD yStart, const String &pString,
-                      const sFONT *font, UWORD colorForeground, UWORD colorBackground,
-                      PaintTextOrientation orientation = TEXT_TL);
+    void drawNum(uint16_t xPoint, uint16_t yPoint, int32_t number, sFONT *font, uint16_t colorForeground, uint16_t colorBackground) const;
+    void drawTime(uint16_t xStart, uint16_t yStart, const PAINT_TIME *pTime, sFONT *font, uint16_t colorForeground, uint16_t
+                  colorBackground) const;
 
-inline void Paint_DrawString(const String &pString,
-                             const UWORD xStart,const UWORD yStart,
-                             const sFONT *font, const UWORD colorForeground,
-                             const PaintTextOrientation orientation = TEXT_TL) {
-    Paint_DrawString(xStart, yStart, pString, font, colorForeground, colorForeground, orientation);
-}
+    void drawBitMap(const unsigned char *imageBuffer) const;
+    void drawBitMapPaste(const unsigned char *imageBuffer, UWORD xStart, UWORD yStart, UWORD imageWidth, UWORD imageHeight, UBYTE flipColor) const;
+    void drawImage(const unsigned char *imageBuffer, UWORD xStart, UWORD yStart, UWORD wImage, UWORD hImage) const;
 
-void Paint_DrawNum(UWORD Xpoint, UWORD Ypoint, int32_t Nummber, sFONT *Font, UWORD Color_Foreground,
-                   UWORD Color_Background);
+    // Getters
+    UBYTE* getImage() const { return _image; }
+    UWORD getWidth() const { return _width; }
+    UWORD getHeight() const { return _height; }
 
-void Paint_DrawTime(UWORD Xstart, UWORD Ystart, PAINT_TIME *pTime, sFONT *Font, UWORD Color_Foreground,
-                    UWORD Color_Background);
 
-//pic
-void Paint_DrawBitMap(const unsigned char *image_buffer);
+private:
+    UBYTE *_image;
+    UWORD _width;
+    UWORD _height;
+    UWORD _widthMemory;
+    UWORD _heightMemory;
+    UWORD _color;
+    UWORD _rotate;
+    UWORD _mirror;
+    UWORD _widthByte;
+    UWORD _heightByte;
+    UWORD _scale;
+};
 
-void Paint_DrawBitMap_Paste(const unsigned char *image_buffer, UWORD xStart, UWORD yStart, UWORD imageWidth,
-                            UWORD imageHeight, UBYTE flipColor);
-
-void Paint_DrawImage(const unsigned char *image_buffer, UWORD xStart, UWORD yStart, UWORD W_Image, UWORD H_Image);
 
 #endif

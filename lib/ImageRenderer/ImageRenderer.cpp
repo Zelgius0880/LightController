@@ -21,6 +21,7 @@
 #include "assets/rain_and_snow_mix.h"
 #include "assets/snowy_3.h"
 #include "assets/thunderstorms.h"
+#include "leds/task_leds.h"
 #include "logger/task_logger.h"
 
 extern SemaphoreHandle_t fsMutex;
@@ -38,6 +39,7 @@ bool ImageRenderer::renderImage(
     const NetatmoMeasureResponse &humidityMain,
     const OWMForecastResponse &owmForecast
 ) {
+    LedEvent::blink(0, 0, 255, 0, 100);
     ::File file = LittleFS.open("/image.bin", "rb");
     if (!file || file.isDirectory()) {
         WebServerEvent::printLog("- Failed to open file for reading or it is a directory");
@@ -49,12 +51,13 @@ bool ImageRenderer::renderImage(
     const auto size = file.size();
 
     if ((image = static_cast<uint8_t *>(ps_malloc(size))) == nullptr) {
-        WebServerEvent::printLog("Failed to apply for black memory... . Requested: %d, Remaining: %d\n", size, ESP.getFreePsram());
+        WebServerEvent::printLog("Failed to apply for black memory... . Requested: %d, Remaining: %d\n", size,
+                                 ESP.getFreePsram());
         DEV_Module_Exit();
         return false;
     }
-    Paint_NewImage(image, 1200, 1600, 0, WHITE);
-    Paint_SetRotate(270);
+    _paint.newImage(image, 1200, 1600, 0, WHITE);
+    _paint.setRotate(270);
 
     file.readBytes(reinterpret_cast<char *>(image), size);
     file.close();
@@ -62,8 +65,8 @@ bool ImageRenderer::renderImage(
     //EPD_13IN3E_Clear(EPD_13IN3E_WHITE);
     vTaskDelay(pdMS_TO_TICKS(500));
 
-    Paint_SetScale(6);
-    Paint_SelectImage(image);
+    _paint.setScale(6);
+    _paint.selectImage(image);
 
     // 4. Draw Temperature Charts
     if (tempMain.size > 0) {
@@ -84,8 +87,8 @@ bool ImageRenderer::renderImage(
     }
 
 
-    if (!owmForecast.count > 0) {
-        drawWeatherForecast(owmForecast, 895, 410 , 700, 150);
+    if (owmForecast.count > 0) {
+        drawWeatherForecast(owmForecast, 895, 410, 700, 150);
     }
 
     DEV_Module_Init();
@@ -103,6 +106,8 @@ bool ImageRenderer::renderImage(
     DEV_Module_Exit();
 
     free(image);
+
+    LedEvent::plain(0, 0, 255, 64);
     return true;
 }
 
@@ -110,17 +115,23 @@ void ImageRenderer::drawLineChart(
     const NetatmoMeasureResponse &temperature,
     const String &title,
     const String &units,
-    const uint16_t x, const uint16_t y, const uint16_t w, const uint16_t h,
+    // ReSharper disable once CppDFAConstantParameter
+    const uint16_t x, const uint16_t y,
+    // ReSharper disable once CppDFAConstantParameter
+    const uint16_t w,
+    // ReSharper disable once CppDFAConstantParameter
+    const uint16_t h,
+    // ReSharper disable once CppDFAConstantParameter
     const uint32_t lineColor
-) {
+) const {
     if (temperature.size < 1) return;
 
     //drawAlphaRoundRect(canvas, x, y, w, h, 8, backgroundColor, alpha);
 
 
     if (temperature.size < 2) {
-        Paint_DrawString(x + w / 2, y + h / 2, (String(temperature.values[0], 1) + units).c_str(), &Font20,
-                         EPD_13IN3E_WHITE, EPD_13IN3E_WHITE);
+        _paint.drawString(x + w / 2, y + h / 2, (String(temperature.values[0], 1) + units).c_str(), &Font20,
+                          EPD_13IN3E_WHITE, EPD_13IN3E_WHITE, TEXT_MC); // Changed TEXT_TC to TEXT_MC for consistency
 
         return;
     }
@@ -144,41 +155,41 @@ void ImageRenderer::drawLineChart(
     minVal -= 1.0;
     maxVal += 1.0;
 
-    const int chartX = x + 45; // Leave space for Y axis labels
-    const int chartY = y + 45; // Leave space for Title and current temp
-    const int chartW = w - 65;
-    const int chartH = h - 70; // Leave space for X axis
+    const uint16_t chartX = x + 45; // Leave space for Y axis labels
+    const uint16_t chartY = y + 45; // Leave space for Title and current temp
+    const uint16_t chartW = w - 65;
+    const uint16_t chartH = h - 70; // Leave space for X axis
 
-    auto getY = [&](const double val) -> int {
-        return chartY + chartH - static_cast<int>((val - minVal) / (maxVal - minVal) * chartH);
+    auto getY = [&](const double val) -> uint16_t {
+        return chartY + chartH - static_cast<uint16_t>((val - minVal) / (maxVal - minVal) * chartH);
     };
 
     // Draw Title
-    Paint_DrawString(x + w - 10, y + 5, title.c_str(), &Font16,
-                     EPD_13IN3E_WHITE, EPD_13IN3E_WHITE, TEXT_TR);
+    _paint.drawString(x + w - 10, y + 5, title.c_str(), &Font16,
+                      EPD_13IN3E_WHITE, EPD_13IN3E_WHITE, TEXT_TR);
 
 
     // Draw current temperature (last record) in bigger font
-    Paint_DrawString(x + w / 2, y + 25, String(temperature.values[temperature.size - 1], 1) + " C",
-                     &Font24,EPD_13IN3E_WHITE, EPD_13IN3E_WHITE, TEXT_MC);
+    _paint.drawString(x + w / 2, y + 25, String(temperature.values[temperature.size - 1], 1) + " C",
+                      &Font24, EPD_13IN3E_WHITE, EPD_13IN3E_WHITE, TEXT_MC);
     // Draw Axis
-    Paint_DrawLine(chartX, chartY, chartX, chartY + chartH, EPD_13IN3E_WHITE, DOT_PIXEL_1X1, LINE_STYLE_SOLID);
-    Paint_DrawLine(chartX, chartY + chartH, chartX + chartW, chartY + chartH, EPD_13IN3E_WHITE, DOT_PIXEL_1X1,
-                   LINE_STYLE_SOLID);
+    _paint.drawLine(chartX, chartY, chartX, chartY + chartH, EPD_13IN3E_WHITE, DOT_PIXEL_1X1, LINE_STYLE_SOLID);
+    _paint.drawLine(chartX, chartY + chartH, chartX + chartW, chartY + chartH, EPD_13IN3E_WHITE, DOT_PIXEL_1X1,
+                    LINE_STYLE_SOLID);
 
     // Y Axis Labels
 
-    Paint_DrawString(chartX - 5, chartY, String(maxTemperature, 1),
-                     &Font12,EPD_13IN3E_WHITE, EPD_13IN3E_WHITE, TEXT_MR);
+    _paint.drawString(String(maxTemperature, 1), chartX - 5, chartY,
+                      &Font12,EPD_13IN3E_WHITE, TEXT_MR);
 
-    Paint_DrawString(chartX - 5, chartY + chartH, String(minTemperature, 1),
-                     &Font12,EPD_13IN3E_WHITE, EPD_13IN3E_WHITE, TEXT_MR);
+    _paint.drawString(String(minTemperature, 1), chartX - 5, chartY + chartH,
+                      &Font12,EPD_13IN3E_WHITE, TEXT_MR);
     // X Axis Labels
-    Paint_DrawString(chartX, chartY + chartH + 5, "-24h",
-                     &Font12,EPD_13IN3E_WHITE, EPD_13IN3E_WHITE, TEXT_TC);
+    _paint.drawString(chartX, chartY + chartH + 5, "-24h",
+                      &Font12, EPD_13IN3E_WHITE, EPD_13IN3E_WHITE, TEXT_TC);
 
-    Paint_DrawString(chartX + chartW, chartY + chartH + 5, "0h",
-                     &Font12,EPD_13IN3E_WHITE, EPD_13IN3E_WHITE, TEXT_TC);
+    _paint.drawString(chartX + chartW, chartY + chartH + 5, "0h",
+                      &Font12, EPD_13IN3E_WHITE, EPD_13IN3E_WHITE, TEXT_TC);
     // Draw Line Chart
     for (int i = 0; i < temperature.size - 1; i++) {
         const int x1 = chartX + (i * chartW) / (temperature.size - 1);
@@ -186,9 +197,8 @@ void ImageRenderer::drawLineChart(
         const int x2 = chartX + ((i + 1) * chartW) / (temperature.size - 1);
         const int y2 = getY(temperature.values[i + 1]);
 
-        Paint_DrawLine(x1, y1, x2, y2, lineColor, DOT_PIXEL_2X2, LINE_STYLE_SOLID);
-
-        Paint_DrawLine(x1, y1 + 1, x2, y2 + 1, lineColor, DOT_PIXEL_2X2, LINE_STYLE_SOLID);
+        _paint.drawLine(x1, y1, x2, y2, lineColor, DOT_PIXEL_3X3, LINE_STYLE_SOLID);
+        _paint.drawLine(x1, y1 + 1, x2, y2 + 1, lineColor, DOT_PIXEL_3X3, LINE_STYLE_SOLID);
     }
 }
 
@@ -196,18 +206,23 @@ void ImageRenderer::drawBarChart(
     const NetatmoMeasureResponse &pressure,
     const String &title,
     const String &units,
-    const uint16_t x, const uint16_t y, const uint16_t w, const uint16_t h,
+    // ReSharper disable once CppDFAConstantParameter
+    const uint16_t x, const uint16_t y,
+    // ReSharper disable once CppDFAConstantParameter
+    const uint16_t w,
+    // ReSharper disable once CppDFAConstantParameter
+    const uint16_t h,
     const uint32_t barColor
-) {
+) const {
     if (pressure.size < 1) return;
 
     if (pressure.size < 2) {
         // Just draw the current pressure if not enough data for chart
-        Paint_DrawString(title, x + w - 10, y + 5, &Font16, EPD_13IN3E_WHITE,
-                         TEXT_TR);
+        _paint.drawString(x + w - 10, y + 5, title.c_str(), &Font16, EPD_13IN3E_WHITE,
+                          EPD_13IN3E_WHITE, TEXT_TR);
 
-        Paint_DrawString(String(pressure.values[0], 1) + units, x + w / 2, y + h / 2, &Font24, EPD_13IN3E_WHITE,
-                         TEXT_MC);
+        _paint.drawString(x + w / 2, y + h / 2, String(pressure.values[0], 1) + units, &Font24, EPD_13IN3E_WHITE,
+                          EPD_13IN3E_WHITE, TEXT_MC);
         return;
     }
 
@@ -229,38 +244,39 @@ void ImageRenderer::drawBarChart(
     minVal -= 2.0;
     maxVal += 2.0;
 
-    const int chartX = x + 55; // Leave space for Y axis labels (pressure is usually ~1013)
-    const int chartY = y + 45; // Leave space for Title and current value
-    const int chartW = w - 75;
-    const int chartH = h - 70; // Leave space for X axis
+    const uint16_t chartX = x + 55; // Leave space for Y axis labels (pressure is usually ~1013)
+    const uint16_t chartY = y + 45; // Leave space for Title and current value
+    const uint16_t chartW = w - 75;
+    const uint16_t chartH = h - 70; // Leave space for X axis
 
     auto getY = [&](const double val) -> int {
         return chartY + chartH - static_cast<int>((val - minVal) / (maxVal - minVal) * chartH);
     };
 
-    Paint_DrawString(title, x + w - 10, y + 5, &Font16, EPD_13IN3E_WHITE, TEXT_TR);
+    _paint.drawString(x + w - 10, y + 5, title.c_str(), &Font16, EPD_13IN3E_WHITE, EPD_13IN3E_WHITE, TEXT_TR);
 
     // Draw current pressure (last record) in bigger font
 
-    Paint_DrawString(String(pressure.values[pressure.size - 1], 0) + units, x + w / 2, y + 25, &Font24,
-                     EPD_13IN3E_WHITE, TEXT_MC);
+    _paint.drawString(x + w / 2, y + 25, String(pressure.values[pressure.size - 1], 0) + units, &Font24,
+                      EPD_13IN3E_WHITE, EPD_13IN3E_WHITE, TEXT_MC);
 
     // Draw Axis
-    Paint_DrawLine(chartX, chartY, chartX, chartY + chartH, EPD_13IN3E_WHITE, DOT_PIXEL_1X1, LINE_STYLE_SOLID);
+    _paint.drawLine(chartX, chartY, chartX, chartY + chartH, EPD_13IN3E_WHITE, DOT_PIXEL_1X1, LINE_STYLE_SOLID);
     // Y axis
-    Paint_DrawLine(chartX, chartY + chartH, chartX + chartW, chartY + chartH, EPD_13IN3E_WHITE, DOT_PIXEL_1X1,
-                   LINE_STYLE_SOLID); // X axis
+    _paint.drawLine(chartX, chartY + chartH, chartX + chartW, chartY + chartH, EPD_13IN3E_WHITE, DOT_PIXEL_1X1,
+                    LINE_STYLE_SOLID); // X axis
 
     // Y Axis Labels
-    Paint_DrawString(String(maxPressure, 0), chartX - 5, chartY, &Font12, EPD_13IN3E_WHITE, TEXT_MR);
-    Paint_DrawString(String(minPressure, 0), chartX - 5, chartY + chartH, &Font12, EPD_13IN3E_WHITE, TEXT_MR);
+    _paint.drawString(String(maxPressure, 0), chartX - 5, chartY, &Font12, EPD_13IN3E_WHITE, TEXT_MR);
+    _paint.drawString(String(minPressure, 0), chartX - 5, chartY + chartH, &Font12, EPD_13IN3E_WHITE,
+                      TEXT_MR);
 
     // X Axis Labels
-    Paint_DrawString("-24h", chartX, chartY + chartH + 5, &Font12, EPD_13IN3E_WHITE, TEXT_TR);
-    Paint_DrawString("0h", chartX + chartW, chartY + chartH + 5, &Font12, EPD_13IN3E_WHITE, TEXT_TR);
+    _paint.drawString(chartX, chartY + chartH + 5, "-24h", &Font12, EPD_13IN3E_WHITE, EPD_13IN3E_WHITE, TEXT_TC);
+    _paint.drawString(chartX + chartW, chartY + chartH + 5, "0h", &Font12, EPD_13IN3E_WHITE, EPD_13IN3E_WHITE, TEXT_TC);
 
     // Draw Bar Chart
-    const int barGap = 2;
+    constexpr int barGap = 2;
     const int barWidth = (chartW / pressure.size) - barGap;
 
     for (int i = 0; i < pressure.size; i++) {
@@ -268,13 +284,17 @@ void ImageRenderer::drawBarChart(
         const int by = getY(pressure.values[i]);
         const int bh = chartY + chartH - by;
         if (bh > 0) {
-            Paint_DrawRectangle(bx, by, bx + (barWidth > 0 ? barWidth : 1), by + bh, barColor, DOT_PIXEL_1X1,
-                                barWidth > 1 ? DRAW_FILL_FULL : DRAW_FILL_EMPTY);
+            _paint.drawRectangle(bx, by, bx + (barWidth > 0 ? barWidth : 1), by + bh, barColor, DOT_PIXEL_1X1,
+                                 barWidth > 1 ? DRAW_FILL_FULL : DRAW_FILL_EMPTY);
         }
     }
 }
 
-void ImageRenderer::drawIcon(const uint16_t x, const uint16_t y, size_t width, size_t height, const uint8_t *image) {
+void ImageRenderer::drawIcon(const uint16_t x, const uint16_t y, const uint8_t *image,
+                             // ReSharper disable once CppDFAConstantParameter
+                             const size_t width,
+                             const size_t height
+) const {
     uint16_t colors[] = {
         EPD_13IN3E_BLACK,
         EPD_13IN3E_WHITE,
@@ -292,14 +312,14 @@ void ImageRenderer::drawIcon(const uint16_t x, const uint16_t y, size_t width, s
         // If the value is 0, we skip it to keep the background visible.
         if (pixelVal == 0) continue;
 
-        uint16_t color = colors[pixelVal - 1];
+        const uint16_t color = colors[pixelVal - 1];
 
         // 4. Calculate X and Y coordinates
         // i % width gives the column, i / width gives the row.
-        UWORD xPos = x + (i % width);
-        UWORD yPos = y + (i / width);
+        const UWORD xPos = x + (i % width);
+        const UWORD yPos = y + (i / width);
 
-        Paint_SetPixel(xPos, yPos, color);
+        _paint.setPixel(xPos, yPos, color);
     }
 }
 
@@ -351,47 +371,55 @@ void ImageRenderer::drawWeather(const uint16_t x, const uint16_t y, const uint16
         image = cloudy_data;
     }
 
-    drawIcon(x, y, width, height, image);
+    drawIcon(x, y, image, width, height);
 }
 
 void ImageRenderer::drawWeatherForecast(
     const OWMForecastResponse &forecast,
-    const uint16_t x, const uint16_t y, const uint16_t w, const uint16_t h
+    // ReSharper disable once CppDFAConstantParameter
+    const uint16_t x,
+    // ReSharper disable once CppDFAConstantParameter
+    const uint16_t y,
+    // ReSharper disable once CppDFAConstantParameter
+    const uint16_t w,
+    // ReSharper disable once CppDFAConstantParameter
+    const uint16_t h
 ) {
     if (forecast.count == 0) return;
 
-    const int padding = 5;
-    const int count = std::min((int) forecast.count, 7);
+    constexpr int padding = 5;
+    const uint8_t count = std::min(static_cast<uint16_t>(forecast.count), static_cast<uint16_t>(7));
     const int itemWidth = (w - 2 * padding) / count;
 
     // Current time for "Today" check
-    time_t now = timeClient.getEpochTime();
-    struct tm *nowInfo = localtime(&now);
-    int todayYday = nowInfo->tm_yday;
-    int todayYear = nowInfo->tm_year;
+    const time_t now = timeClient.getEpochTime();
+    const tm *nowInfo = localtime(&now);
+    const int todayYDay = nowInfo->tm_yday;
+    const int todayYear = nowInfo->tm_year;
 
     for (int i = 0; i < count; i++) {
         const auto &data = forecast.forecast[i];
-        int ix = x + padding + i * itemWidth;
-        int iy = y + 10;
+        const int ix = x + padding + i * itemWidth;
+        const int iy = y + 10;
 
         // Day of week
-        time_t rawtime = data.dt;
-        struct tm *timeinfo = localtime(&rawtime);
+        const time_t rawTime = data.dt;
+        const tm *timeInfo = localtime(&rawTime);
 
         char dayBuffer[16];
-        if (timeinfo->tm_yday == todayYday && timeinfo->tm_year == todayYear) {
+        if (timeInfo->tm_yday == todayYDay && timeInfo->tm_year == todayYear) {
             strcpy(dayBuffer, "Today");
         } else {
-            strftime(dayBuffer, sizeof(dayBuffer), "%a", timeinfo); // Short day name
+            strftime(dayBuffer, sizeof(dayBuffer), "%a", timeInfo); // Short day name
         }
 
-        Paint_DrawString(dayBuffer, ix + itemWidth / 2, iy, &Font24, EPD_13IN3E_WHITE, TEXT_TC);
+        _paint.drawString(ix + itemWidth / 2, iy, dayBuffer, &Font24, EPD_13IN3E_WHITE, EPD_13IN3E_WHITE, TEXT_TC);
 
         // Precipitation %
-        String popStr = String((int) (data.pop * 100)) + "%";
-        drawIcon(ix  , iy + 22, rainy_1_width, rainy_1_height, rainy_1_data);
-        Paint_DrawString(popStr, ix + itemWidth / 2 + 20, iy + 30, &Font16, EPD_13IN3E_WHITE, TEXT_TC);
+        String popStr = String(static_cast<int>(data.pop * 100)) + "%";
+        drawIcon(ix, iy + 22, rainy_1_data, rainy_1_width, rainy_1_height);
+        _paint.drawString(ix + itemWidth / 2 + 20, iy + 30, popStr, &Font16, EPD_13IN3E_WHITE, EPD_13IN3E_WHITE,
+                          TEXT_TC);
 
         constexpr int iconSize = 72;
         const int iconX = ix + (itemWidth - iconSize) / 2;
@@ -402,6 +430,6 @@ void ImageRenderer::drawWeatherForecast(
 
         // Min/Max Temp
         String tempStr = String(data.tempMax, 0) + "/" + String(data.tempMin, 0);
-        Paint_DrawString(tempStr, ix + itemWidth / 2, y + h - 5, &Font20, EPD_13IN3E_WHITE, TEXT_BC);
+        _paint.drawString(ix + itemWidth / 2, y + h - 5, tempStr, &Font20, EPD_13IN3E_WHITE, EPD_13IN3E_WHITE, TEXT_BC);
     }
 }

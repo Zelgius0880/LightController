@@ -1,31 +1,8 @@
 # LightController
 
-This project manages Philips Hue lights through an ESP32, integrating with Firebase Firestore for data synchronization and a Hue Bridge for device control. It includes a Python migration script to synchronize and transform data between Firestore databases.
+This project manages Philips Hue lights through an ESP32, integrating with a local SQLite database, Hue Bridge, and Netatmo sensors. It includes a local web server for management and data visualization.
 
 ## 1. Project Configuration
-
-### .env Configuration (Migration Script)
-
-The `.env` file is used by the `migration.py` script to authenticate with your source and destination Firebase projects and the Hue Bridge. Create a `.env` file in the root directory with the following variables:
-
-```env
-# SOURCE DATABASE (Old)
-SOURCE_FIREBASE_EMAIL=your_email@example.com
-SOURCE_FIREBASE_PASSWORD=your_password
-SOURCE_FIREBASE_API_KEY=your_source_api_key
-SOURCE_FIREBASE_PROJECT_ID=your_source_project_id
-
-# DESTINATION DATABASE (New)
-DEST_FIREBASE_EMAIL=your_email@example.com
-DEST_FIREBASE_PASSWORD=your_password
-DEST_FIREBASE_API_KEY=your_dest_api_key
-DEST_FIREBASE_PROJECT_ID=your_dest_project_id
-
-# HUE BRIDGE CONFIGURATION
-HUE_BRIDGE_IP=192.168.1.xxx
-HUE_BRIDGE_USERNAME=your_hue_username
-HUE_BRIDGE_CLIENT_KEY=your_hue_client_key
-```
 
 ### ESP32 Firmware Configuration (`include/configuration.h`)
 
@@ -93,36 +70,38 @@ The project relies on several external libraries:
 - `ArduinoJson`: For parsing API responses.
 - `ESPAsyncWebServer` & `AsyncTCP`: For the local web server.
 
-## 2. Data Migration
+## 2. Web API
 
-The `migration.py` script is used to migrate data from one Firestore project to another, specifically handling the transformation of Philips Hue light IDs from API v1 to v2.
+The ESP32 runs an asynchronous web server for management and data access.
 
-### Prerequisites
-- Python 3.x
-- Install dependencies: `pip install requests python-dotenv`
+### Endpoints
 
-### Running the Migration
-To migrate a specific collection (e.g., `groups` and its `items` subcollections):
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| **GET** | `/status` | Returns system status, memory usage, and Netatmo token state. |
+| **GET** | `/logs` | Returns recent system logs in JSON format. |
+| **GET** | `/groups` | Returns all light groups from the database. |
+| **POST** | `/groups` | Create or update a light group in the local database. |
+| **GET** | `/lights?groupId={id}` | Returns lights associated with the specified group ID. |
+| **POST** | `/lights` | Create or update a light and its group association. |
+| **GET** | `/switches?groupId={id}` | Returns switches associated with the specified group ID. |
+| **POST** | `/switches` | Create or update a physical switch mapping. |
+| **GET** | `/switches/check?uid={uid}` | Checks if a switch with the given UID already exists. |
+| **POST** | `/switch_attribution/mode` | Enables or disables switch attribution mode. |
+| **GET** | `/switch_attribution/data` | Returns the last received 433MHz switch data in attribution mode. |
+| **GET** | `/render` | Triggers a new image rendering for the display. |
+| **GET** | `/export_db` | Downloads the local SQLite database file. |
+| **POST** | `/import_db` | Uploads and replaces the local SQLite database. |
+| **GET** | `/crashes` | Downloads the core dump if a crash occurred. |
 
-```bash
-py migration.py --collection groups
-```
+### Switch Attribution Mode
+When **Switch Attribution Mode** is enabled via `POST /switch_attribution/mode`, the ESP32 will stop processing 433MHz signals normally (i.e., it won't trigger light events). Instead, it will store the UID of the last received signal. This UID can then be retrieved using `GET /switch_attribution/data` to facilitate mapping physical switches to light groups in a management interface.
 
-The script will:
-1. Fetch current light data directly from the Hue Bridge API v2.
-2. Recursively traverse the source collection.
-3. Transform HUE LIGHT documents (mapping v1 IDs to v2 UUIDs, syncing names, and removing obsolete fields).
-4. Write transformed documents to the destination.
-5. Verify the migration and log results to `migration_verification.log`.
-
-### Output Logs
-- `id_mapping.log`: Tracks v1 ID to v2 UUID mappings.
-- `missing_ids.log`: Logs light IDs found in Firestore that don't match any light on the Hue Bridge.
-- `migration_verification.log`: Reports the success of document creation in the destination.
+Detailed API documentation is available in `openapi.yaml`.
 
 ## 3. Hardware Configuration (Pinout)
 
-The project uses an Freenove ESP32-S3 WROOM with a 8mb of PSRAM with the following peripheral pinout:
+The project uses an Freenove ESP32-S3 WROOM with a 8MB of PSRAM with the following peripheral pinout:
 
 | Peripheral | Component | Pin (ESP32-S3) | Notes |
 | :--- | :--- | :--- | :--- |
@@ -139,33 +118,3 @@ The project uses an Freenove ESP32-S3 WROOM with a 8mb of PSRAM with the followi
 - **GND**: Ground.
 - **I/O (Signal)**: Connected to `GPIO 1`.
 - **Type**: Passive Buzzer (allows melody playback via `ezBuzzer`).
-
-## 4 Proxying Firebase Client
-You'll need to update a source file of the FirebaseClient library to run a proxy.
-Why a proxy? I encounter some 400 issues during running the requests. As I haven't more info of what's was wrong, I needed to see how the requests are being made.
-
-### How to proceed
-- Edit the file `FirebaseClient/src/core/AsyncClient/AsyncClient.h`
-- On line ~`935:20` rplace the following code:
-```aiignore
-sData->request.addRequestHeader(method, path, extras);
-        sData->request.addHostHeader(sData->request.getHost(true, &sData->response.val[resns::location]).c_str());
-```
-with
-```C++
-#ifdef  PROXY_ADDRESSS
-        const String fullUrl = url + path;
-        sData->request.val[reqns::url] = PROXY_ADDRESSS;
-        sData->request.addRequestHeader(method, path, extras);
-        sData->request.addHostHeader(url);
-#ifdef PROXY_PORT
-        sData->request.port = PROXY_PORT;
-#endif
-
-#else
-        sData->request.addRequestHeader(method, path, extras);
-        sData->request.addHostHeader(sData->request.getHost(true, &sData->response.val[resns::location]).c_str());
-#endif
-```
-
-- Now you jsut need to define the `PROXY_ADDRESSS` and `PROXY_PORT` macros .

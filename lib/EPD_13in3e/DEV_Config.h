@@ -31,8 +31,6 @@
 #define _DEV_CONFIG_H_
 
 #include <Arduino.h>
-#include <stdint.h>
-#include <stdio.h>
 
 
 
@@ -48,10 +46,10 @@
 **/
 #define EPD_SCK_PIN     13
 #define EPD_MOSI_PIN    14
-#define EPD_CS_M_PIN    15
-#define EPD_CS_S_PIN    2
-#define EPD_RST_PIN     10
-#define EPD_DC_PIN      9
+#define EPD_CS_M_PIN    47
+#define EPD_CS_S_PIN    46
+#define EPD_RST_PIN     42
+#define EPD_DC_PIN      21
 #define EPD_BUSY_PIN    11
 #define EPD_PWR_PIN     12
 
@@ -69,8 +67,7 @@
 /**
  * delay x ms
 **/
-#define DEV_Delay_ms(__xms) delay(__xms)
-
+#define DEV_Delay_ms(__xms) vTaskDelay(pdMS_TO_TICKS(__xms))
 /*------------------------------------------------------------------------------------------------------*/
 UBYTE DEV_Module_Init(void);
 void GPIO_Mode(UWORD GPIO_Pin, UWORD Mode);

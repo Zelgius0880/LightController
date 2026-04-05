@@ -96,6 +96,11 @@ ApiResponse HueApiClient::request(const String &method, const String &path, cons
     if (httpCode > 0) {
         String responseBody = _http.getString();
 # ifdef DEBUG
+        for (uint32_t i = 0; i < _http.headers(); i++) {
+            Serial.printf("[HUE] Request header: %s: %s\n", _http.headerName(i).c_str(), _http.header(i).c_str());
+        }
+        Serial.printf("[HUE] Request body: %s\n", body.c_str());
+        Serial.printf("[HUE] Response code: %d\n", httpCode);
         Serial.printf("[HUE] Response Body: %s\n", responseBody.c_str());
 #endif
         deserializeJson(result.body, responseBody);

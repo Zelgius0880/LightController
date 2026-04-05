@@ -172,25 +172,25 @@ parameter:
 ******************************************************************************/
 static void EPD_13IN3E_TurnOnDisplay(void)
 {
-    printf("Write PON \r\n");
+    Debug("Write PON \r\n");
     EPD_13IN3E_CS_ALL(0);
     EPD_13IN3E_SendCommand(0x04); // POWER_ON
     EPD_13IN3E_CS_ALL(1);
     EPD_13IN3E_ReadBusyH();
 
-    printf("Write DRF \r\n");
+    Debug("Write DRF \r\n");
     DEV_Delay_ms(50);
     EPD_13IN3E_CS_ALL(0);
     EPD_13IN3E_SPI_Sand(DRF, DRF_V, sizeof(DRF_V));
     EPD_13IN3E_CS_ALL(1);
     EPD_13IN3E_ReadBusyH();
 
-    printf("Write POF \r\n");
+    Debug("Write POF \r\n");
     EPD_13IN3E_CS_ALL(0);
     EPD_13IN3E_SPI_Sand(POF, POF_V, sizeof(POF_V));
     EPD_13IN3E_CS_ALL(1);
     // EPD_13IN3E_ReadBusyH();
-    printf("Display Done!! \r\n");
+    Debug("Display Done!! \r\n");
 }
 
 /******************************************************************************
@@ -482,7 +482,7 @@ void EPD_13IN3E_Show6Block(void)
 function :  Enter sleep mode
 parameter:
 ******************************************************************************/
-void EPD_13IN3E_Sleep(void)
+void EPD_13IN3E_Sleep()
 {
     EPD_13IN3E_CS_ALL(0);
     EPD_13IN3E_SendCommand(0x07); // DEEP_SLEEP

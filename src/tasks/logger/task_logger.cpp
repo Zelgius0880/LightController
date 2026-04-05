@@ -11,7 +11,8 @@
 
 extern QueueHandle_t logQueue;
 
-[[noreturn]] void loggerTask(void *pvParameters) {
+[[noreturn]] void loggerTask(void *) {
+#ifdef ENABLE_LOGS
     LogEvent packet{};
 
     Serial.println("Logger task started");
@@ -20,10 +21,11 @@ extern QueueHandle_t logQueue;
 
     for (;;) {
         esp_task_wdt_add(nullptr);
-        if (xQueueReceive(logQueue, &packet, 0)) {
+        if (xQueueReceive(logQueue, &packet, 10)) {
             // 1. Print the message
             if (packet.payload != nullptr) {
                 Serial.print(packet.payload);
+                Serial.flush();
 
                 // 2. CRITICAL: Free the memory after printing to prevent leaks
                 if (packet.isPSRAM) {
@@ -34,10 +36,12 @@ extern QueueHandle_t logQueue;
 
         taskYIELD();
     }
+#endif
 }
 
 // Helper for "Fire and Forget" logging of large strings
 void LogEvent::post(const char *format, ...) {
+#ifdef ENABLE_LOGS
     // Allocate space in the 8MB PSRAM so we don't fragment Internal RAM
     // 1. Allocate a buffer in the 8MB PSRAM (not Internal RAM!)
     // 256 bytes is usually plenty for a single log line.
@@ -65,4 +69,5 @@ void LogEvent::post(const char *format, ...) {
     if (xQueueSend(logQueue, &packet, 0) != pdPASS) {
         free(buffer);
     }
+#endif
 }

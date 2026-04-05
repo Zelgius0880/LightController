@@ -79,6 +79,7 @@ void playMelody(const int *melodyArray, int count, int tempoValue) {
 
         if (buzzer.getState() == BUZZER_IDLE) {
             if (xQueueReceive(buzzerQueue, &event, pdMS_TO_TICKS(10))) {
+                buzzer.turnON();
                 if (event.type == BuzzerType::BIP) {
                     playMelody(fireballMelody, sizeof(fireballMelody) / sizeof(fireballMelody[0]), fireballTempo);
                 } else if (event.type == BuzzerType::BIP2) {
@@ -86,6 +87,7 @@ void playMelody(const int *melodyArray, int count, int tempoValue) {
                 } else if (event.type == BuzzerType::MELODY) {
                     playMelody(melody, sizeof(melody) / sizeof(melody[0]), tempo);
                 }
+                buzzer.turnOFF();
             }
         }
 

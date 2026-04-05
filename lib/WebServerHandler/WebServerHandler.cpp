@@ -9,6 +9,7 @@
 #include <ImageRenderer.h>
 #include <LightsDatabaseManager.h>
 #include "esp_core_dump.h"
+#include "leds/task_leds.h"
 
 extern QueueHandle_t renderingQueue;
 extern SemaphoreHandle_t fsMutex;
@@ -36,6 +37,25 @@ void WebServerHandler::addLogMessage(const char *msg) {
     }
 }
 
+void WebServerHandler::setSwitchAttributionMode(const bool enable) {
+    _switchAttributionModeEnabled = enable;
+    if (enable) {
+        _lastReceivedSwitchData = 0; // Reset last received data when starting attribution
+    }
+}
+
+bool WebServerHandler::isSwitchAttributionModeEnabled() const {
+    return _switchAttributionModeEnabled;
+}
+
+void WebServerHandler::setLastReceivedSwitchData(uint64_t data) {
+    _lastReceivedSwitchData = data;
+}
+
+uint64_t WebServerHandler::getLastReceivedSwitchData() const {
+    return _lastReceivedSwitchData;
+}
+
 void WebServerHandler::setup() {
     DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
     DefaultHeaders::Instance().addHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
@@ -58,7 +78,7 @@ void WebServerHandler::setup() {
     });
 
     // 2. Attach the Body handler to it
-    handler->onBody([this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+    handler->onBody([](AsyncWebServerRequest *request, const uint8_t *data, const size_t len, const size_t index, const size_t total) {
         if (xSemaphoreTake(fsMutex, pdMS_TO_TICKS(5000))) {
             if (!index) {
                 // Open file for writing
@@ -87,7 +107,7 @@ void WebServerHandler::setup() {
             return;
         }
 
-        ImageRendererEvent event{
+        constexpr ImageRendererEvent event{
             .type = ImageRendererEventType::RENDER_IMAGE,
         };
 
@@ -116,12 +136,12 @@ void WebServerHandler::setup() {
 
         AsyncWebServerResponse *response = request->beginChunkedResponse(
             "application/octet-stream",
-            [addr, size](uint8_t *buffer, size_t maxLen, size_t index) -> size_t {
+            [addr, size](uint8_t *buffer, const size_t maxLen, const size_t index) -> size_t {
                 if (index >= size) return 0;
 
-                size_t toRead = std::min(maxLen, size - index);
+                const size_t toRead = std::min(maxLen, size - index);
 
-                if (esp_flash_read(NULL, buffer, addr + index, toRead) != ESP_OK) {
+                if (esp_flash_read(nullptr, buffer, addr + index, toRead) != ESP_OK) {
                     return 0;
                 }
 
@@ -134,7 +154,7 @@ void WebServerHandler::setup() {
     });
 
     _server.on("/clear_crashes", HTTP_GET, [](AsyncWebServerRequest *request) {
-        esp_err_t err = esp_core_dump_image_erase();
+        const esp_err_t err = esp_core_dump_image_erase();
 
         if (err == ESP_OK) {
             request->send(200, "text/plain", "Core dump erased");
@@ -145,7 +165,7 @@ void WebServerHandler::setup() {
 
     _server.on("/token_result", HTTP_GET, [](AsyncWebServerRequest *request) {
         if (request->hasParam("code")) {
-            String code = request->getParam("code")->value();
+            const String code = request->getParam("code")->value();
             ImageRendererEvent event{};
             event.type = ImageRendererEventType::NETATMO_CODE;
             strncpy(event.code, code.c_str(), sizeof(event.code) - 1);
@@ -161,23 +181,23 @@ void WebServerHandler::setup() {
         }
     });
 
-    _server.on("/export_db", HTTP_GET, [this](AsyncWebServerRequest *request) {
+    _server.on("/export_db", HTTP_GET, [](AsyncWebServerRequest *request) {
         request->send(LittleFS, DB_PATH, "application/octet-stream", true);
     });
 
-    _server.on("/import_db", HTTP_POST, [this](AsyncWebServerRequest *request) {
+    _server.on("/import_db", HTTP_POST, [](AsyncWebServerRequest *request) {
                    request->send(200, "text/plain", "Import successful");
                },
-               [this](AsyncWebServerRequest *request, const String &filename, size_t index, uint8_t *data, size_t len,
-                      bool final) {
+               [this](const AsyncWebServerRequest *request, const String &, const size_t index, const uint8_t *data, const size_t len,
+                      const bool final) {
                    if (index == 0) {
-                       size_t totalSize = request->contentLength();
+                       const size_t totalSize = request->contentLength();
                        if (totalSize == 0) {
                            return; // Or handle error: cannot allocate unknown size
                        }
 
                        // Allocate from PSRAM
-                       _importBuffer = (uint8_t *) ps_malloc(totalSize);
+                       _importBuffer = static_cast<uint8_t *>(ps_malloc(totalSize));
                        if (_importBuffer == nullptr) {
                            LogEvent::post("Failed to allocate PSRAM for DB import\n");
                            return;
@@ -209,18 +229,200 @@ void WebServerHandler::setup() {
                        }
                    }
                });
+
+    _server.on("/groups", HTTP_GET, [](AsyncWebServerRequest *request) {
+        const std::vector<Group> groups = dbManager.getAllGroups();
+        JsonDocument doc(&allocator);
+        const JsonArray array = doc.to<JsonArray>();
+        for (const auto &group : groups) {
+            auto obj = array.add<JsonObject>();
+            obj["id"] = group.id;
+            obj["name"] = group.name;
+            obj["brightness"] = group.brightness;
+            obj["x"] = group.x;
+            obj["y"] = group.y;
+        }
+        String response;
+        serializeJson(doc, response);
+        request->send(200, "application/json", response);
+    });
+
+    _server.on("/groups", HTTP_POST, [](AsyncWebServerRequest *) {}, nullptr,
+               [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t, size_t) {
+                   JsonDocument doc(&allocator);
+                   const DeserializationError error = deserializeJson(doc, data, len);
+                   if (error) {
+                       request->send(400, "application/json", R"({"error":"Invalid JSON"})");
+                       return;
+                   }
+
+                   Group group;
+                   group.id = doc["id"];
+                   group.name = doc["name"].as<String>();
+                   group.brightness = doc["brightness"];
+                   group.x = doc["x"];
+                   group.y = doc["y"];
+
+                   if (dbManager.upsertGroup(group)) {
+                       request->send(200, "application/json", R"({"status":"ok"})");
+                   } else {
+                       request->send(500, "application/json", R"({"error":"Failed to upsert group"})");
+                   }
+               });
+
+    _server.on("/lights", HTTP_GET, [](AsyncWebServerRequest *request) {
+        if (!request->hasParam("groupId")) {
+            request->send(400, "application/json", R"({"error":"Missing groupId parameter"})");
+            return;
+        }
+        const uint64_t groupId = strtoull(request->getParam("groupId")->value().c_str(), nullptr, 10);
+        const std::vector<Light> lights = dbManager.getLightsByGroupId(groupId);
+        JsonDocument doc(&allocator);
+        const auto array = doc.to<JsonArray>();
+        for (const auto &light : lights) {
+            auto obj = array.add<JsonObject>();
+            obj["uid"] = light.uid;
+            obj["name"] = light.name;
+            obj["state"] = light.state;
+            obj["type"] = light.type;
+            obj["brightness"] = light.brightness;
+            obj["x"] = light.x;
+            obj["y"] = light.y;
+            obj["groupId"] = light.groupId;
+        }
+        String response;
+        serializeJson(doc, response);
+        request->send(200, "application/json", response);
+    });
+
+    _server.on("/lights", HTTP_POST, [](AsyncWebServerRequest *) {}, nullptr,
+               [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t, size_t) {
+                   JsonDocument doc(&allocator);
+                   const DeserializationError error = deserializeJson(doc, data, len);
+                   if (error) {
+                       request->send(400, "application/json", R"({"error":"Invalid JSON"})");
+                       return;
+                   }
+
+                   Light light;
+                   light.uid = doc["uid"].as<String>();
+                   light.name = doc["name"].as<String>();
+                   light.state = doc["state"].as<String>();
+                   light.type = doc["type"].as<String>();
+                   light.brightness = doc["brightness"];
+                   light.x = doc["x"];
+                   light.y = doc["y"];
+                   light.groupId = doc["groupId"];
+
+                   if (dbManager.upsertLight(light)) {
+                       request->send(200, "application/json", R"({"status":"ok"})");
+                   } else {
+                       request->send(500, "application/json", R"({"error":"Failed to upsert light"})");
+                   }
+               });
+
+    _server.on("/switches", HTTP_GET, [](AsyncWebServerRequest *request) {
+        if (!request->hasParam("groupId")) {
+            request->send(400, "application/json", R"({"error":"Missing groupId parameter"})");
+            return;
+        }
+        const uint64_t groupId = strtoull(request->getParam("groupId")->value().c_str(), nullptr, 10);
+        const std::vector<Switch> switches = dbManager.getSwitchesByGroupId(groupId);
+        JsonDocument doc(&allocator);
+        const auto array = doc.to<JsonArray>();
+        for (const auto &sw : switches) {
+            auto obj = array.add<JsonObject>();
+            obj["uid"] = sw.uid;
+            obj["name"] = sw.name;
+            obj["groupId"] = sw.groupId;
+        }
+        String response;
+        serializeJson(doc, response);
+        request->send(200, "application/json", response);
+    });
+
+    _server.on("/switches/check", HTTP_GET, [](AsyncWebServerRequest *request) {
+        if (!request->hasParam("uid")) {
+            request->send(400, "application/json", R"({"error":"Missing uid parameter"})");
+            return;
+        }
+        const String uid = request->getParam("uid")->value();
+        const Switch sw = dbManager.getSwitchByUid(uid);
+        JsonDocument doc;
+        if (sw.uid.length() > 0) {
+            doc["exists"] = true;
+            doc["uid"] = sw.uid;
+            doc["name"] = sw.name;
+            doc["groupId"] = sw.groupId;
+        } else {
+            doc["exists"] = false;
+        }
+        String response;
+        serializeJson(doc, response);
+        request->send(200, "application/json", response);
+    });
+
+    _server.on("/switches", HTTP_POST, [](AsyncWebServerRequest *) {}, nullptr,
+               [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t, size_t) {
+                   JsonDocument doc(&allocator);
+                   const DeserializationError error = deserializeJson(doc, data, len);
+                   if (error) {
+                       request->send(400, "application/json", R"({"error":"Invalid JSON"})");
+                       return;
+                   }
+
+                   Switch sw;
+                   sw.uid = doc["uid"].as<String>();
+                   sw.name = doc["name"].as<String>();
+                   sw.groupId = doc["groupId"];
+
+                   if (dbManager.upsertSwitch(sw)) {
+                       request->send(200, "application/json", R"({"status":"ok"})");
+                   } else {
+                       request->send(500, "application/json", R"({"error":"Failed to upsert switch"})");
+                   }
+               });
+
+    _server.on("/switch_attribution/mode", HTTP_POST, [](AsyncWebServerRequest *) {}, nullptr,
+               [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t, size_t) {
+                   JsonDocument doc(&allocator);
+                   const DeserializationError error = deserializeJson(doc, data, len);
+                   if (error) {
+                       request->send(400, "application/json", R"({"error":"Invalid JSON"})");
+                       return;
+                   }
+
+                   const bool enabled = doc["enabled"];
+                   setSwitchAttributionMode(enabled);
+                   request->send(200, "application/json", R"({"status":"ok"})");
+               });
+
+    _server.on("/switch_attribution/data", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        JsonDocument doc;
+        doc["enabled"] = isSwitchAttributionModeEnabled();
+        if (_lastReceivedSwitchData != 0) {
+            char buf[17];
+            sprintf(buf, "%012llx", _lastReceivedSwitchData);
+            doc["last_data"] = buf;
+        } else {
+            doc["last_data"] = static_cast<char *>(nullptr);
+        }
+        String response;
+        serializeJson(doc, response);
+        request->send(200, "application/json", response);
+    });
 }
 
 void WebServerHandler::handleStatus(AsyncWebServerRequest *request) const {
     JsonDocument doc(&allocator);
-    size_t total = psramInit() ? ESP.getPsramSize() : 0;
+    const size_t total = psramInit() ? ESP.getPsramSize() : 0;
     doc["authenticated"] = strlen(_hueUsername) > 0;
     doc["username"] = _hueUsername;
     doc["error"] = _errorBuffer;
     doc["totalBytes"] = total;
     doc["usedBytes"] = psramInit() ? total - ESP.getFreePsram() : 0;
 
-    JsonObject netatmo = doc["netatmo"].to<JsonObject>();
+    const auto netatmo = doc["netatmo"].to<JsonObject>();
     netatmo["authenticated"] = _netatmoToken.accessToken.length() > 0;
     netatmo["expires_in"] = _netatmoToken.expiresIn;
     netatmo["creation_timestamp"] = _netatmoToken.creationTimestamp;
@@ -242,11 +444,10 @@ String WebServerHandler::processor(const String &var) {
     if (var == "NETATMO_CLIENT_ID") {
         return NETATMO_CLIENT_ID;
     }
-    return String();
+    return {};
 }
 
 void WebServerHandler::handleLogs(AsyncWebServerRequest *request) const {
-    PsramAllocator allocator;
     JsonDocument doc(&allocator);
 
     // Emit oldest -> newest
@@ -260,45 +461,4 @@ void WebServerHandler::handleLogs(AsyncWebServerRequest *request) const {
     AsyncResponseStream *response = request->beginResponseStream("application/json");
     serializeJson(doc, *response);
     request->send(response);
-}
-
-void WebServerHandler::handleUpload(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data,
-                                    size_t len, bool final) {
-    LogEvent::post("Uploading image chunk %d\n", index);
-    if (index == 0) {
-        // First chunk, open file for WRITE to truncate existing
-        if (xSemaphoreTake(fsMutex, pdMS_TO_TICKS(1000))) {
-            File file = LittleFS.open("/image.jpg", FILE_WRITE);
-            if (!file) {
-                LogEvent::post("Failed to open file for writing at index 0\n");
-                request->send(500, "text/plain", "Failed to open file for writing");
-                return;
-            }
-            file.write(data, len);
-            file.close();
-            xSemaphoreGive(fsMutex);
-        } else {
-            LogEvent::post("Get MUTEX failed");
-        }
-    } else {
-        // Subsequent chunks, open file for APPEND
-        if (xSemaphoreTake(fsMutex, pdMS_TO_TICKS(1000))) {
-            File file = LittleFS.open("/image.jpg", FILE_APPEND);
-            if (!file) {
-                LogEvent::post("Failed to open file for appending at index %d\n", index);
-                // We don't send 500 here because the request is already being handled,
-                // but we should probably find a way to signal failure if final=true
-                return;
-            }
-            file.write(data, len);
-            file.close();
-            xSemaphoreGive(fsMutex);
-        } else {
-            LogEvent::post("Get MUTEX failed");
-        }
-    }
-
-    if (final) {
-        LogEvent::post("Upload complete\n");
-    }
 }

@@ -31,6 +31,12 @@ public:
 
     void addLogMessage(const char *msg);
 
+    // New methods for switch attribution mode
+    void setSwitchAttributionMode(bool enable);
+    bool isSwitchAttributionModeEnabled() const;
+    void setLastReceivedSwitchData(uint64_t data);
+    uint64_t getLastReceivedSwitchData() const;
+
 private:
     AsyncWebServer &_server;
     char _hueUsername[64];
@@ -42,13 +48,13 @@ private:
     uint8_t* _importBuffer;
     size_t _importBufferLen;
 
+    bool _switchAttributionModeEnabled = false;
+    uint64_t _lastReceivedSwitchData = 0;
+
     void handleStatus(AsyncWebServerRequest *request) const;
 
     void handleLogs(AsyncWebServerRequest *request) const;
     static String processor(const String& var);
-
-    void handleUpload(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len,
-                      bool final);
 };
 
 // Initialize the static member

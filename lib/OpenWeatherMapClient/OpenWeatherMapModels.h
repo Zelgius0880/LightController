@@ -28,9 +28,8 @@ struct OWMForecastResponse {
                 data.tempMax = item["temp"]["max"];
                 data.pop = item["pop"];
                 
-                // Find the worst weather ID (lowest ID usually corresponds to more severe conditions,
-                // but OWM actually categorizes them; for simple logic, we'll take the first one or
-                // implement worst-case if there were multiple. Daily forecast usually has one main entry.)
+                //  It is possible to meet more than one weather condition for a requested location.
+                //  The first weather condition in API respond is primary
                 JsonArrayConst weather = item["weather"];
                 if (weather && weather.size() > 0) {
                     data.weatherId = weather[0]["id"];

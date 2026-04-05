@@ -28,12 +28,10 @@
 #
 ******************************************************************************/
 #include "DEV_Config.h"
+#include "Debug.h"
 
 void GPIO_Config(void)
 {
-    
-    
-
     pinMode(EPD_BUSY_PIN,  INPUT);
     pinMode(EPD_RST_PIN , OUTPUT);
     pinMode(EPD_DC_PIN  , OUTPUT);
@@ -48,6 +46,7 @@ void GPIO_Config(void)
     digitalWrite(EPD_CS_S_PIN , HIGH);
     digitalWrite(EPD_SCK_PIN, LOW);
     digitalWrite(EPD_PWR_PIN , HIGH);
+
 }
 
 void GPIO_Mode(UWORD GPIO_Pin, UWORD Mode)

@@ -9,7 +9,6 @@
 class NetatmoClient {
 public:
     NetatmoClient(WiFiClientSecure& client);
-    virtual ~NetatmoClient();
 
     // API methods
     bool getToken(const String& code);
@@ -19,8 +18,8 @@ public:
         String deviceId;
         String moduleId;
         String scale = "30min";
-        long dateEnd = 0;
-        long dateBegin = 0;
+        unsigned long dateEnd = 0;
+        unsigned long dateBegin = 0;
         bool optimize = false;
         bool realTime = true;
         String type = "temperature";

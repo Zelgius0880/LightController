@@ -39,25 +39,26 @@ public:
     void close();
 
     // Upsert methods
-    bool upsertGroup(const Group& group);
+    bool upsertGroup(const Group& group) const;
     bool upsertLight(const Light& light) const;
-    bool upsertSwitch(const Switch& sw);
+    bool upsertSwitch(const Switch& sw) const;
 
     // Retrieval
-    Group getGroupBySwitchUid(const String& switchUid);
-    std::vector<Light> getLightsByGroupId(uint64_t groupId);
+    std::vector<Group> getAllGroups() const; // Keep this as it's a top-level resource
+    Group getGroupBySwitchUid(const String& switchUid) const;
+    std::vector<Light> getLightsByGroupId(uint64_t groupId) const; // Already exists
+    std::vector<Switch> getSwitchesByGroupId(uint64_t groupId) const; // New method
+    Switch getSwitchByUid(const String& switchUid) const; // New method
 
     // Import (Backup management)
     bool importDatabase(const uint8_t *data, size_t len);
-
-    static int db_open(const char* filename, sqlite3** db);
 
 private:
     const char* _dbPath;
     sqlite3* _db;
 
     bool executeQuery(const char* sql) const;
-    bool createTables();
+    bool createTables() const;
 };
 
 #endif // LIGHTS_DATABASE_MANAGER_H

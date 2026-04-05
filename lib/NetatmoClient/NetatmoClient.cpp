@@ -10,8 +10,6 @@ NetatmoClient::NetatmoClient(WiFiClientSecure& client) : _secureClient(client) {
     _secureClient.setInsecure();
 }
 
-NetatmoClient::~NetatmoClient() {
-}
 
 bool NetatmoClient::begin() {
     loadToken();

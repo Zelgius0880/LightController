@@ -26,7 +26,7 @@ LightsDatabaseManager dbManager(DB_PATH);
 
 void handleSwitch(const LightEvent &receivedEvent);
 
-[[noreturn]] void lightControllerTask(void *pvParameters) {
+[[noreturn]] void lightControllerTask(void *) {
     esp_task_wdt_add(nullptr);
 
     LedEvent::blink(128, 128, 0, 0, 100);
@@ -111,7 +111,10 @@ void handleSwitch(const LightEvent &receivedEvent) {
                 }
             }
 
-            api.updateLight(light.uid.c_str(), updateDoc.as<JsonVariantConst>());
+            const auto response = api.updateLight(light.uid.c_str(), updateDoc.as<JsonVariantConst>());
+            if (response.status != 200) {
+                WebServerEvent::printLog("Failed to update light %s\n", response.errors[0].description.c_str());
+            }
         }
 #endif
 

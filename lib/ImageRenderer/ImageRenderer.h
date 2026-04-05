@@ -8,11 +8,11 @@
 #include <NetatmoModels.h>
 #include <OpenWeatherMapModels.h>
 
+#include "GUI_Paint.h"
+
 class ImageRenderer {
 public:
     ImageRenderer();
-
-    void begin();
 
     bool renderImage(
         const NetatmoMeasureResponse &tempMain,
@@ -24,27 +24,28 @@ public:
     static ImageRenderer *instance;
 
 private:
-    static void drawLineChart(
+    GuiPaint _paint;
+    void drawLineChart(
         const NetatmoMeasureResponse &temperature,
         const String &title,
         const String &units, uint16_t x, uint16_t y, uint16_t w,
         uint16_t h, uint32_t lineColor
-    );
+    ) const;
 
-    static void drawBarChart(
+    void drawBarChart(
         const NetatmoMeasureResponse &pressure,
         const String &title,
         const String &units, uint16_t x, uint16_t y, uint16_t w,
         uint16_t h, uint32_t barColor
-    );
+    ) const;
 
-    static void drawIcon(uint16_t x, uint16_t y, size_t width, size_t height, const uint8_t *image);
+    void drawIcon(uint16_t x, uint16_t y, const uint8_t *image, size_t width = 72, size_t height = 72) const;
 
-    static void drawWeather(uint16_t x, uint16_t y, uint16_t iconCode);
+    void drawWeather(uint16_t x, uint16_t y, uint16_t iconCode);
 
-    static void drawWeatherForecast(
+    void drawWeatherForecast(
         const OWMForecastResponse &forecast,
-        uint16_t x, uint16_t y, uint16_t w, uint16_t h
+        uint16_t x = 895, uint16_t y = 410, uint16_t w = 700, uint16_t h = 150
     );
 
 };

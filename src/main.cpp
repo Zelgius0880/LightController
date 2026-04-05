@@ -19,6 +19,7 @@
 
 #include "DEV_Config.h"
 #include "EPD_13in3e.h"
+#include "WebServerHandler.h"
 
 #define RECEIVER_PIN 2
 #define WDT_TIMEOUT_SECONDS 10000
@@ -39,6 +40,10 @@ NTPClient timeClient(ntpUDP);
 WiFiClientSecure sharedClient;
 
 PsramAllocator allocator;
+
+// Reference to global objects from task_webserver.cpp
+extern AsyncWebServer server;
+extern WebServerHandler handler;
 
 void setup() {
     Serial.begin(115200);
@@ -66,11 +71,15 @@ void setup() {
     file.close();
 #endif // INITIAL_USER_NAME && INITIAL_CLIENT_KEY
 
+
+
     if (psramInit()) {
         Serial.println("\nPSRAM is correctly initialized");
     } else {
         Serial.println("PSRAM not available");
     }
+
+    WiFi.setHostname("light-controller");
 
     WiFi.begin(WIFI_SSID, PASSWORD);
     Serial.print("Connecting");
@@ -100,13 +109,15 @@ void setup() {
         renderingQueue != nullptr && buzzerQueue != nullptr) {
         // System Core
         xTaskCreatePinnedToCore(ledsTask, "Leds", 2048, nullptr, 1, nullptr, 0);
-        xTaskCreatePinnedToCore(loggerTask, "Logger", 2048, nullptr, 1, nullptr, 0);
         xTaskCreatePinnedToCore(buzzerTask, "Buzzer", 2048, nullptr, 1, nullptr, 0);
+        xTaskCreatePinnedToCore(imageRenderingTask, "ImageRendering", 8192, nullptr, 1, nullptr, 0);
 
         // App Core
         xTaskCreatePinnedToCore(webserverTask, "WebServer", 4096, nullptr, 1, nullptr, 1);
         xTaskCreatePinnedToCore(lightControllerTask, "LightController", 16384, nullptr, 1, nullptr, 1);
-        xTaskCreatePinnedToCore(imageRenderingTask, "ImageRendering", 8192, nullptr, 1, nullptr, 1);
+#ifdef ENABLE_LOGS
+        xTaskCreatePinnedToCore(loggerTask, "Logger", 2048, nullptr, 1, nullptr, 1);
+#endif
     }
 
 #ifdef ENABLE_LIGHTS
@@ -136,7 +147,12 @@ void loop() {
             LogEvent::post("Signal received: %012llx\n", data);
             receiver.resetAvailable();
 
-            LightEvent::switchPressed(data);
+            if (handler.isSwitchAttributionModeEnabled()) {
+                LogEvent::post("Attribution mode enabled, data stored\n");
+                handler.setLastReceivedSwitchData(data);
+            } else {
+                LightEvent::switchPressed(data);
+            }
             BuzzerEvent::bip();
         } else {
             receiver.resetAvailable();
