@@ -14,7 +14,6 @@
 #include <WiFiClientSecure.h>
 
 #include "HueModels.h"
-#include <logger/task_logger.h>
 
 #include "allocator/psram_allocator.h"
 

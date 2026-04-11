@@ -42,7 +42,7 @@ bool ImageRenderer::renderImage(
     LedEvent::blink(0, 0, 255, 0, 100);
     ::File file = LittleFS.open("/image.bin", "rb");
     if (!file || file.isDirectory()) {
-        WebServerEvent::printLog("- Failed to open file for reading or it is a directory");
+        LogEvent::post("- Failed to open file for reading or it is a directory");
         return false;
     }
 
@@ -51,7 +51,7 @@ bool ImageRenderer::renderImage(
     const auto size = file.size();
 
     if ((image = static_cast<uint8_t *>(ps_malloc(size))) == nullptr) {
-        WebServerEvent::printLog("Failed to apply for black memory... . Requested: %d, Remaining: %d\n", size,
+        LogEvent::post("Failed to apply for black memory... . Requested: %d, Remaining: %d\n", size,
                                  ESP.getFreePsram());
         DEV_Module_Exit();
         return false;
@@ -323,7 +323,7 @@ void ImageRenderer::drawIcon(const uint16_t x, const uint16_t y, const uint8_t *
     }
 }
 
-void ImageRenderer::drawWeather(const uint16_t x, const uint16_t y, const uint16_t iconCode) {
+void ImageRenderer::drawWeather(const uint16_t x, const uint16_t y, const uint16_t iconCode) const {
     size_t width, height;
     const uint8_t *image;
 
@@ -384,7 +384,7 @@ void ImageRenderer::drawWeatherForecast(
     const uint16_t w,
     // ReSharper disable once CppDFAConstantParameter
     const uint16_t h
-) {
+) const {
     if (forecast.count == 0) return;
 
     constexpr int padding = 5;

@@ -41,12 +41,12 @@ private:
 
     void drawIcon(uint16_t x, uint16_t y, const uint8_t *image, size_t width = 72, size_t height = 72) const;
 
-    void drawWeather(uint16_t x, uint16_t y, uint16_t iconCode);
+    void drawWeather(uint16_t x, uint16_t y, uint16_t iconCode) const;
 
     void drawWeatherForecast(
         const OWMForecastResponse &forecast,
         uint16_t x = 895, uint16_t y = 410, uint16_t w = 700, uint16_t h = 150
-    );
+    ) const;
 
 };
 

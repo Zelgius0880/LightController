@@ -11,36 +11,28 @@
 
 #include <NetatmoClient.h>
 #include <OpenWeatherMapClient.h>
-#include <webserver/task_webserver.h>
 #include "logger/task_logger.h"
 #include "configuration.h"
+#include "webserver/task_webserver.h"
 
-#if !defined(ENABLE_NETATMO) || !defined(ENABLE_OWM)
-#include "mock_data.h"
+#ifndef NETATMO_UPDATE_INTERVAL_MILLI
+#define NETATMO_UPDATE_INTERVAL_MILLI 20 * 60 * 1000
 #endif
 
-#ifndef NETATMO_UPDATE_INTERVAL_MINUTES
-#define NETATMO_UPDATE_INTERVAL_MINUTES 20
-#endif
-
-#ifndef OWM_UPDATE_INTERVAL_MINUTES
-#define OWM_UPDATE_INTERVAL_MINUTES 60
+#ifndef OWM_UPDATE_INTERVAL_MILLI
+#define OWM_UPDATE_INTERVAL_MILLI 60 * 60 * 1000
 #endif
 
 extern QueueHandle_t renderingQueue;
 extern WiFiClientSecure sharedClient;
+
 SemaphoreHandle_t ImageRendererEvent::completionSemaphore = nullptr;
 ImageRenderer *ImageRenderer::instance = nullptr;
 
 ImageRenderer renderer;
 
-#ifdef ENABLE_NETATMO
 NetatmoClient netatmoClient(sharedClient);
-#endif
-
-#ifdef ENABLE_OWM
 OpenWeatherMapClient owmClient(sharedClient);
-#endif
 
 // Storage for Netatmo data
 NetatmoMeasureResponse tempMain;
@@ -62,11 +54,6 @@ void fetchOwm();
 
 uint16_t minutes = 0;
 
-uint16_t elapsedMinutes(const uint32_t from) {
-    const auto elapsedMillis = millis() - from;
-    return elapsedMillis / (60 * 1000);
-}
-
 [[noreturn]] void imageRenderingTask(void *) {
     esp_task_wdt_add(nullptr);
     if (ImageRendererEvent::completionSemaphore == nullptr) {
@@ -77,21 +64,9 @@ uint16_t elapsedMinutes(const uint32_t from) {
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
 
-#if !defined(ENABLE_NETATMO) || !defined(ENABLE_OWM)
-    populateMocks(tempMain, tempModule, pressureMain, humidityMain, owmForecast);
-#endif
-
     ImageRendererEvent event{};
 
-#ifdef ENABLE_NETATMO
     netatmoClient.begin();
-
-    const NetatmoToken &token = netatmoClient.getTokenInfo();
-    WebServerEvent::updateNetatmoToken(token.accessToken.c_str(), token.refreshToken.c_str(), token.expiresIn,
-                                       token.creationTimestamp);
-#endif
-
-
     bool needUpdate = false;
 
     for (;;) {
@@ -102,13 +77,13 @@ uint16_t elapsedMinutes(const uint32_t from) {
             tokenValid = checkToken();
         }
 
-        if (tokenValid && (elapsedMinutes(lastNetatmoUpdate) >= NETATMO_UPDATE_INTERVAL_MINUTES || lastNetatmoUpdate ==
+        if (tokenValid && (millis() - lastNetatmoUpdate >= NETATMO_UPDATE_INTERVAL_MILLI || lastNetatmoUpdate ==
                            0)) {
             fetchNetatmo();
             needUpdate = true;
         }
 
-        if (elapsedMinutes(lastOwmUpdate) >= OWM_UPDATE_INTERVAL_MINUTES || lastOwmUpdate == 0) {
+        if (millis()  - lastOwmUpdate >= OWM_UPDATE_INTERVAL_MILLI || lastOwmUpdate == 0) {
             fetchOwm();
             needUpdate = true;
         }
@@ -127,15 +102,10 @@ uint16_t elapsedMinutes(const uint32_t from) {
 
                     break;
                 case ImageRendererEventType::NETATMO_CODE:
-#ifdef ENABLE_NETATMO
-
                     LogEvent::post("Received Netatmo code\n");
                     if (netatmoClient.getToken(event.code)) {
-                        const NetatmoToken &t = netatmoClient.getTokenInfo();
-                        WebServerEvent::updateNetatmoToken(t.accessToken.c_str(), t.refreshToken.c_str(), t.expiresIn,
-                                                           t.creationTimestamp);
+                        lastNetatmoUpdate = 0;
                     }
-#endif
                     break;
                 default:
                     break;
@@ -156,7 +126,6 @@ uint16_t elapsedMinutes(const uint32_t from) {
 }
 
 bool checkToken() {
-#ifdef ENABLE_NETATMO
 
     // Check token validity every 60 seconds
     if (millis() - lastTokenCheck > 60000) {
@@ -165,9 +134,6 @@ bool checkToken() {
             LogEvent::post("Netatmo token expired or about to expire, refreshing...\n");
             if (netatmoClient.refreshToken()) {
                 LogEvent::post("Netatmo token refreshed successfully\n");
-                const NetatmoToken &t = netatmoClient.getTokenInfo();
-                WebServerEvent::updateNetatmoToken(t.accessToken.c_str(), t.refreshToken.c_str(), t.expiresIn,
-                                                   t.creationTimestamp);
             } else {
                 LogEvent::post("Failed to refresh Netatmo token\n");
                 return false;
@@ -176,15 +142,11 @@ bool checkToken() {
     }
 
     return true;
-#else
-    return true;
-#endif
 }
 
 void fetchNetatmo() {
-#ifdef ENABLE_NETATMO
     if (netatmoClient.isAuthenticated()) {
-        WebServerEvent::printLog("Fetching Netatmo data...\n");
+        LogEvent::post("Fetching Netatmo data...\n");
 
         int status = netatmoClient.getLast24hTemperature("", tempMain);
         if (status == 200)
@@ -202,14 +164,11 @@ void fetchNetatmo() {
         if (status == 200)
             LogEvent::post("Fetched main humidity (%d samples)\n", humidityMain.size);
     }
+
     lastNetatmoUpdate = millis();
-#else
-    lastNetatmoUpdate = millis();
-#endif
 }
 
 void fetchOwm() {
-#ifdef ENABLE_OWM
 
     LogEvent::post("Fetching OpenWeatherMap forecast...\n");
     const uint16_t status = owmClient.getForecast(owmForecast);
@@ -218,6 +177,6 @@ void fetchOwm() {
     } else {
         LogEvent::post("Failed to fetch OWM forecast (status: %d)\n", status);
     }
-#endif
+
     lastOwmUpdate = millis();
 }

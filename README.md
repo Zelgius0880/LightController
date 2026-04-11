@@ -118,3 +118,10 @@ The project uses an Freenove ESP32-S3 WROOM with a 8MB of PSRAM with the followi
 - **GND**: Ground.
 - **I/O (Signal)**: Connected to `GPIO 1`.
 - **Type**: Passive Buzzer (allows melody playback via `ezBuzzer`).
+
+## Core dump handling
+python .\espcoredump.py info_corefile -m <firmware.elf> --core <core_dump.bin>
+or
+```powershell
+.\coredump.ps1 -IP 192.168.1.48 -FirmwareElf .\.pio\build\freenove_esp32_s3_wroom\firmware.elf > coredump.txt
+```

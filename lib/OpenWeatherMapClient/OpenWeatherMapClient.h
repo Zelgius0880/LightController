@@ -16,7 +16,7 @@ private:
     WiFiClientSecure& _secureClient;
     HTTPClient _http;
 
-    int sendRequest(const String& url, JsonDocument& responseDoc);
+    bool sendRequest(const String &url, JsonDocument &responseDoc);
 };
 
 #endif // OPENWEATHERMAPCLIENT_H

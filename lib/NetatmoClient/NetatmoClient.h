@@ -46,8 +46,9 @@ private:
     WiFiClientSecure& _secureClient;
     HTTPClient _http;
 
-    int sendRequest(const String& method, const String& url, const String& body, JsonDocument& responseDoc, bool authenticated = true);
-    bool handleTokenResponse(int status, const JsonDocument& doc);
+    bool sendRequest(const String &method, const String &url, const String &body, JsonDocument &responseDoc,
+                     bool authenticated = true);
+    bool handleTokenResponse(const JsonDocument &doc);
 
     static MeasureParams makeLast24hParams(const String& type, const String& moduleId = "") ;
 };

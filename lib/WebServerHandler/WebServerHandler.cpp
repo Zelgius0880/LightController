@@ -6,10 +6,8 @@
 #include "logger/task_logger.h"
 
 #include <rendering/task_image_rendering.h>
-#include <ImageRenderer.h>
 #include <LightsDatabaseManager.h>
 #include "esp_core_dump.h"
-#include "leds/task_leds.h"
 
 extern QueueHandle_t renderingQueue;
 extern SemaphoreHandle_t fsMutex;
@@ -19,22 +17,7 @@ extern LightsDatabaseManager dbManager;
 #define TOSTRING(x) STRINGIFY(x)
 
 WebServerHandler::WebServerHandler(AsyncWebServer &server)
-    : _server(server), _hueUsername(""), _errorBuffer{}, _logBuffer{}, _importBuffer(nullptr), _importBufferLen(0) {
-}
-
-void WebServerHandler::addLogMessage(const char *msg) {
-    if (!msg) return;
-
-    // Copy at most 127 chars to ensure null-termination
-    strncpy(_logBuffer[_logIndex], msg, sizeof(_logBuffer[0]) - 1);
-    // Ensure null-termination and truncate beyond 127
-    _logBuffer[_logIndex][sizeof(_logBuffer[0]) - 1] = '\0';
-
-    // Advance circular index
-    _logIndex = (_logIndex + 1) % LOG_BUFFER_SIZE;
-    if (_logCount < LOG_BUFFER_SIZE) {
-        _logCount++;
-    }
+    : _server(server), _importBuffer(nullptr), _importBufferLen(0) {
 }
 
 void WebServerHandler::setSwitchAttributionMode(const bool enable) {
@@ -62,10 +45,6 @@ void WebServerHandler::setup() {
     DefaultHeaders::Instance().addHeader("Access-Control-Allow-Headers", "Content-Type");
     _server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
         request->send(200, "text/html", index_html, processor);
-    });
-
-    _server.on("/status", HTTP_GET, [this](AsyncWebServerRequest *request) {
-        handleStatus(request);
     });
 
     _server.on("/upload_image", HTTP_OPTIONS, [](AsyncWebServerRequest *request) {
@@ -122,9 +101,6 @@ void WebServerHandler::setup() {
         }
     });
 
-    _server.on("/logs", HTTP_GET, [this](AsyncWebServerRequest *request) {
-        handleLogs(request);
-    });
     _server.on("/crashes", HTTP_GET, [](AsyncWebServerRequest *request) {
         size_t addr = 0;
         size_t size = 0;
@@ -413,52 +389,9 @@ void WebServerHandler::setup() {
     });
 }
 
-void WebServerHandler::handleStatus(AsyncWebServerRequest *request) const {
-    JsonDocument doc(&allocator);
-    const size_t total = psramInit() ? ESP.getPsramSize() : 0;
-    doc["authenticated"] = strlen(_hueUsername) > 0;
-    doc["username"] = _hueUsername;
-    doc["error"] = _errorBuffer;
-    doc["totalBytes"] = total;
-    doc["usedBytes"] = psramInit() ? total - ESP.getFreePsram() : 0;
-
-    const auto netatmo = doc["netatmo"].to<JsonObject>();
-    netatmo["authenticated"] = _netatmoToken.accessToken.length() > 0;
-    netatmo["expires_in"] = _netatmoToken.expiresIn;
-    netatmo["creation_timestamp"] = _netatmoToken.creationTimestamp;
-    netatmo["valid"] = _netatmoToken.isValid();
-
-    doc["fsTotal"] = LittleFS.totalBytes();
-    doc["fsUsed"] = LittleFS.usedBytes();
-    doc["firmware"] = TOSTRING(FIRWARE_VERSION);
-
-    doc["heapTotal"] = ESP.getHeapSize();
-    doc["heapFree"] = ESP.getFreeHeap();
-
-    String response;
-    serializeJson(doc, response);
-    request->send(200, "application/json", response);
-}
-
 String WebServerHandler::processor(const String &var) {
     if (var == "NETATMO_CLIENT_ID") {
         return NETATMO_CLIENT_ID;
     }
     return {};
-}
-
-void WebServerHandler::handleLogs(AsyncWebServerRequest *request) const {
-    JsonDocument doc(&allocator);
-
-    // Emit oldest -> newest
-    const size_t total = _logCount;
-    const size_t start = (_logIndex + (LOG_BUFFER_SIZE - total)) % LOG_BUFFER_SIZE;
-    for (size_t i = 0; i < total; ++i) {
-        const size_t idx = (start + i) % LOG_BUFFER_SIZE;
-        doc.add(_logBuffer[idx]);
-    }
-
-    AsyncResponseStream *response = request->beginResponseStream("application/json");
-    serializeJson(doc, *response);
-    request->send(response);
 }

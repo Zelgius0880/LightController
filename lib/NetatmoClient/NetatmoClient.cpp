@@ -35,8 +35,10 @@ bool NetatmoClient::getToken(const String &code) {
     body += "&client_secret=" + String(NETATMO_CLIENT_SECRET);
 
     JsonDocument doc(&allocator);
-    int status = sendRequest("POST", "https://api.netatmo.com/oauth2/token", body, doc, false);
-    return handleTokenResponse(status, doc);
+    const bool status = sendRequest("POST", "https://api.netatmo.com/oauth2/token", body, doc, false);
+
+    if (status) return handleTokenResponse(doc);
+    return  false;
 }
 
 bool NetatmoClient::refreshToken() {
@@ -48,17 +50,16 @@ bool NetatmoClient::refreshToken() {
     body += "&client_secret=" + String(NETATMO_CLIENT_SECRET);
 
     JsonDocument doc(&allocator);
-    int status = sendRequest("POST", "https://api.netatmo.com/oauth2/token", body, doc, false);
-    return handleTokenResponse(status, doc);
+    const bool status = sendRequest("POST", "https://api.netatmo.com/oauth2/token", body, doc, false);
+    if (status) return handleTokenResponse(doc);
+
+    return  false;
 }
 
-bool NetatmoClient::handleTokenResponse(int status, const JsonDocument &doc) {
-    if (status == 200) {
-        _token.fromJson(doc);
-        saveToken();
-        return true;
-    }
-    return false;
+bool NetatmoClient::handleTokenResponse(const JsonDocument &doc) {
+    _token.fromJson(doc);
+    saveToken();
+    return true;
 }
 
 int NetatmoClient::getMeasure(const MeasureParams &params, NetatmoMeasureResponse &response) {
@@ -76,14 +77,14 @@ int NetatmoClient::getMeasure(const MeasureParams &params, NetatmoMeasureRespons
 
     JsonDocument doc(&allocator);
     const int status = sendRequest("GET", url, "", doc, true);
-    if (status == 200) {
+    if (status) {
         response = NetatmoMeasureResponse::fromJson(doc, params.moduleId.length() > 0);
     }
     return status;
 }
 
-int NetatmoClient::sendRequest(const String &method, const String &url, const String &body, JsonDocument &responseDoc,
-                               const bool authenticated) {
+bool NetatmoClient::sendRequest(const String &method, const String &url, const String &body, JsonDocument &responseDoc,
+                                const bool authenticated) {
     _http.begin(_secureClient, url);
 
     if (authenticated) {
@@ -100,10 +101,11 @@ int NetatmoClient::sendRequest(const String &method, const String &url, const St
         const DeserializationError error = deserializeJson(responseDoc, responseBody);
         if (error != DeserializationError::Ok) {
             LogEvent::post("Failed to deserialize JSON: %s\n", error.c_str());
+            return false;
         }
     }
     _http.end();
-    return httpCode;
+    return httpCode > 0;
 }
 
 void NetatmoClient::loadToken() {

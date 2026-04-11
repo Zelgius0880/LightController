@@ -18,9 +18,7 @@
 
 extern QueueHandle_t lightControllerQueue;
 extern WiFiClientSecure sharedClient;
-#ifdef ENABLE_LIGHTS
 HueApiClient api(sharedClient, BRIDGE_IP, 443, true);
-#endif
 
 LightsDatabaseManager dbManager(DB_PATH);
 
@@ -33,9 +31,8 @@ void handleSwitch(const LightEvent &receivedEvent);
     dbManager.begin();
     LedEvent::off();
 
-    WebServerEvent::printLog("Database Manager Initialized\n");
+    LogEvent::post("Database Manager Initialized\n");
 
-#ifdef ENABLE_LIGHTS
     LedEvent::blink(0, 0, 128, 0, 100);
 
     api.loadCredentials();
@@ -46,9 +43,6 @@ void handleSwitch(const LightEvent &receivedEvent);
     }
 
     LedEvent::plain(0, 128, 0, 128);
-
-    WebServerEvent::updateUsername(api.getUsername().c_str());
-#endif
 
     BuzzerEvent::melody();
 
@@ -73,7 +67,6 @@ void handleSwitch(const LightEvent &receivedEvent) {
     if (group.id != 0) {
         std::vector<Light> lights = dbManager.getLightsByGroupId(group.id);
 
-#ifdef ENABLE_LIGHTS
         bool firstToggle = true;
         bool toggleTargetOn = false;
 
@@ -113,11 +106,13 @@ void handleSwitch(const LightEvent &receivedEvent) {
 
             const auto response = api.updateLight(light.uid.c_str(), updateDoc.as<JsonVariantConst>());
             if (response.status != 200) {
-                WebServerEvent::printLog("Failed to update light %s\n", response.errors[0].description.c_str());
+                if (response.errors.description != nullptr)
+                    LogEvent::post("Failed to update light %s (code %d)\n",
+                                             response.errors.description.c_str(), response.status);
+                else
+                    LogEvent::post("Failed to update light: Unknow error (code %d)\n", response.status);
             }
         }
-#endif
-
         BuzzerEvent::bip2();
     } else {
         LogEvent::post("No group found for switch %s\n", uidBuffer);

@@ -8,8 +8,7 @@ extern PsramAllocator allocator;
 OpenWeatherMapClient::OpenWeatherMapClient(WiFiClientSecure& client) : _secureClient(client) {
 }
 
-OpenWeatherMapClient::~OpenWeatherMapClient() {
-}
+OpenWeatherMapClient::~OpenWeatherMapClient() = default;
 
 int OpenWeatherMapClient::getForecast(OWMForecastResponse& response) {
     String url = "https://api.openweathermap.org/data/2.5/forecast/daily?lat=";
@@ -20,14 +19,14 @@ int OpenWeatherMapClient::getForecast(OWMForecastResponse& response) {
     url += OWM_API_KEY;
 
     JsonDocument doc(&allocator);
-    int status = sendRequest(url, doc);
-    if (status == 200) {
-        response = OWMForecastResponse::fromJson(doc);
+    const int status = sendRequest(url, doc);
+    if (status) {
+        response.fromJson(doc);
     }
     return status;
 }
 
-int OpenWeatherMapClient::sendRequest(const String& url, JsonDocument& responseDoc) {
+bool OpenWeatherMapClient::sendRequest(const String &url, JsonDocument &responseDoc) {
     _http.begin(_secureClient, url);
 
     const int httpCode = _http.GET();
@@ -36,10 +35,12 @@ int OpenWeatherMapClient::sendRequest(const String& url, JsonDocument& responseD
         const DeserializationError error = deserializeJson(responseDoc, responseBody);
         if (error != DeserializationError::Ok) {
             LogEvent::post("Failed to deserialize OWM JSON: %s\n", error.c_str());
+            return false;
         }
     } else {
-        LogEvent::post("OWM HTTP GET failed: %s\n", _http.errorToString(httpCode).c_str());
+        LogEvent::post("OWM HTTP GET failed: %s\n", HTTPClient::errorToString(httpCode).c_str());
+        return false;
     }
     _http.end();
-    return httpCode;
+    return true;
 }

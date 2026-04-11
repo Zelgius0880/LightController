@@ -72,14 +72,13 @@ void setup() {
 #endif // INITIAL_USER_NAME && INITIAL_CLIENT_KEY
 
 
-
     if (psramInit()) {
         Serial.println("\nPSRAM is correctly initialized");
     } else {
         Serial.println("PSRAM not available");
     }
 
-    WiFi.setHostname("light-controller");
+    WiFiClass::setHostname("light-controller");
 
     WiFi.begin(WIFI_SSID, PASSWORD);
     Serial.print("Connecting");
@@ -105,6 +104,9 @@ void setup() {
     renderingQueue = xQueueCreate(1, sizeof(ImageRendererEvent));
     buzzerQueue = xQueueCreate(1, sizeof(BuzzerEvent));
 
+    sharedClient.setTimeout(5);
+    sharedClient.setHandshakeTimeout(5);
+
     if (lightControllerQueue != nullptr && ledQueue != nullptr && logQueue != nullptr && webserverQueue != nullptr &&
         renderingQueue != nullptr && buzzerQueue != nullptr) {
         // System Core
@@ -116,13 +118,11 @@ void setup() {
         xTaskCreatePinnedToCore(webserverTask, "WebServer", 4096, nullptr, 1, nullptr, 1);
         xTaskCreatePinnedToCore(lightControllerTask, "LightController", 16384, nullptr, 1, nullptr, 1);
 #ifdef ENABLE_LOGS
-        xTaskCreatePinnedToCore(loggerTask, "Logger", 2048, nullptr, 1, nullptr, 1);
+        xTaskCreatePinnedToCore(loggerTask, "Logger", 8192, nullptr, 1, nullptr, 1);
 #endif
     }
 
-#ifdef ENABLE_LIGHTS
     receiver.enableReceive(digitalPinToInterrupt(RECEIVER_PIN));
-#endif
 }
 
 

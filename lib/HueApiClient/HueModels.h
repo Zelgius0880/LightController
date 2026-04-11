@@ -157,7 +157,7 @@ struct Error {
 template<typename T>
 struct Response {
     int status = 200;
-    std::vector<Error> errors;
+    Error errors;
     std::vector<T> data;
 
     static Response fromJson(const JsonVariantConst json, int status = 200) {
@@ -168,7 +168,7 @@ struct Response {
 
         const auto errs = json["errors"].as<JsonArrayConst>();
         for (JsonVariantConst e : errs) {
-            res.errors.push_back({e["description"].as<String>()});
+           res.errors.description += "\n" + e["description"].as<String>();
         }
 
         const auto dataArr = json["data"].as<JsonArrayConst>();

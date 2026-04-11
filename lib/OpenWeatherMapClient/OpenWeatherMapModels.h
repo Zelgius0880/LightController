@@ -2,7 +2,6 @@
 #define OWM_MODELS_H
 
 #include <ArduinoJson.h>
-#include <vector>
 
 struct WeatherData {
     long dt;
@@ -13,36 +12,32 @@ struct WeatherData {
 };
 
 struct OWMForecastResponse {
-    WeatherData forecast [7];
+    WeatherData forecast[7];
     uint8_t count;
 
-    static OWMForecastResponse fromJson(const JsonDocument& doc) {
-        OWMForecastResponse response;
-        JsonArrayConst list = doc["list"];
+    void fromJson(const JsonDocument &doc) {
+        const JsonArrayConst list = doc["list"];
+        count = 0;
         if (list) {
-            response.count = 0;
-            for (JsonObjectConst item : list) {
-                WeatherData data;
-                data.dt = item["dt"];
-                data.tempMin = item["temp"]["min"];
-                data.tempMax = item["temp"]["max"];
-                data.pop = item["pop"];
-                
+            for (JsonObjectConst item: list) {
+                if (count >= 7) break;
+                forecast[count].dt = item["dt"];
+                forecast[count].tempMin = item["temp"]["min"];
+                forecast[count].tempMax = item["temp"]["max"];
+                forecast[count].pop = item["pop"];
+
                 //  It is possible to meet more than one weather condition for a requested location.
                 //  The first weather condition in API respond is primary
                 JsonArrayConst weather = item["weather"];
                 if (weather && weather.size() > 0) {
-                    data.weatherId = weather[0]["id"];
+                    forecast[count].weatherId = weather[0]["id"];
                 } else {
-                    data.weatherId = 800; // Default to clear sky if missing
+                    forecast[count].weatherId = 800; // Default to clear sky if missing
                 }
 
-                response.forecast[response.count] = data;
-                ++response.count;
-
+                ++count;
             }
         }
-        return response;
     }
 };
 

@@ -7,11 +7,11 @@
 #include <WiFiClient.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
-#include <webserver/task_webserver.h>
 #include <LittleFS.h>
 
 #include "configuration.h"
 #include "leds/task_leds.h"
+#include "logger/task_logger.h"
 
 extern SemaphoreHandle_t fsMutex;
 
@@ -121,7 +121,6 @@ void HueApiClient::handleAuthentication() {
                 _username = authResponse.successes[0].username;
                 _clientKey = authResponse.successes[0].clientKey;
                 setApiKey(_username);
-                WebServerEvent::clearError();
 
                 if (saveCredentials(_username, _clientKey)) {
                     HUE_LOG("Credentials saved successfully\n");
@@ -134,18 +133,18 @@ void HueApiClient::handleAuthentication() {
                     // Link button not pressed
                     LedEvent::plain(128, 128, 0); // Orange/Yellow for alert
                     HUE_LOG("Press the link button...\n");
-                    WebServerEvent::postError("Press the link button on the bridge");
+                    LogEvent::post("Press the link button on the bridge");
                 } else {
                     // Other error
                     LedEvent::plain(128, 0, 0); // Red for error
                     HUE_LOG("Auth Error: %s\n", authResponse.errors[0].description.c_str());
-                    WebServerEvent::postError(authResponse.errors[0].description.c_str());
+                    LogEvent::post(authResponse.errors[0].description.c_str());
                 }
             } else if (authResponse.status != 200) {
                 // HTTP error or something went wrong
                 LedEvent::plain(128, 0, 0); // Red for error
                 HUE_LOG("Auth HTTP Status: %d\n", authResponse.status);
-                WebServerEvent::postError("HTTP Error: %d", authResponse.status);
+                LogEvent::post("HTTP Error: %d", authResponse.status);
             }
         }
     } else {
