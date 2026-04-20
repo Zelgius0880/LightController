@@ -42,7 +42,7 @@ struct ApiResponse {
 
 class HueApiClient {
 public:
-    HueApiClient(WiFiClientSecure &client, const String &host, int port = 443, bool https = true);
+    HueApiClient(const String &host, int port = 443, bool https = true);
 
     void setApiKey(const String &apiKey);
 
@@ -93,7 +93,7 @@ private:
     static bool saveCredentials(const String &username, const String &clientKey);
 
     HTTPClient _http;
-    WiFiClientSecure &_secureClient;
+    WiFiClientSecure _secureClient;
     WiFiClient _client;
 };
 

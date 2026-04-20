@@ -15,10 +15,12 @@
 
 extern SemaphoreHandle_t fsMutex;
 
-HueApiClient::HueApiClient(WiFiClientSecure& client, const String &host, const int port, const bool https) : _secureClient(client) {
+HueApiClient::HueApiClient(const String &host, const int port, const bool https) {
     _host = host;
     _port = port;
     _https = https;
+
+    _secureClient.setInsecure();
 }
 
 void HueApiClient::setApiKey(const String &apiKey) {

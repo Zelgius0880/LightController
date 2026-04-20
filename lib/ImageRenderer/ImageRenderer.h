@@ -6,9 +6,11 @@
 #define LIGHTCONTROLLER_IMAGERENDERER_H
 
 #include <NetatmoModels.h>
-#include <OpenWeatherMapModels.h>
+#include <OpenMeteoModels.h>
 
 #include "GUI_Paint.h"
+
+struct OpenMeteoForecastResponse;
 
 class ImageRenderer {
 public:
@@ -18,7 +20,7 @@ public:
         const NetatmoMeasureResponse &tempMain,
         const NetatmoMeasureResponse &tempModule,
         const NetatmoMeasureResponse &pressureMain,
-        const NetatmoMeasureResponse &humidityMain, const OWMForecastResponse &owmForecast
+        const NetatmoMeasureResponse &humidityMain, const OpenMeteoForecastResponse &owmForecast
     );
 
     static ImageRenderer *instance;
@@ -44,7 +46,7 @@ private:
     void drawWeather(uint16_t x, uint16_t y, uint16_t iconCode) const;
 
     void drawWeatherForecast(
-        const OWMForecastResponse &forecast,
+        const OpenMeteoForecastResponse &forecast,
         uint16_t x = 895, uint16_t y = 410, uint16_t w = 700, uint16_t h = 150
     ) const;
 

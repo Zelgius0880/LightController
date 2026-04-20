@@ -1,12 +1,13 @@
 #include "NetatmoClient.h"
 #include <LittleFS.h>
 #include "configuration.h"
+#include "allocator/psram_allocator.h"
 #include "logger/task_logger.h"
 
 extern SemaphoreHandle_t fsMutex;
 extern PsramAllocator allocator;
 
-NetatmoClient::NetatmoClient(WiFiClientSecure& client) : _secureClient(client) {
+NetatmoClient::NetatmoClient() {
     _secureClient.setInsecure();
 }
 
@@ -62,7 +63,7 @@ bool NetatmoClient::handleTokenResponse(const JsonDocument &doc) {
     return true;
 }
 
-int NetatmoClient::getMeasure(const MeasureParams &params, NetatmoMeasureResponse &response) {
+bool NetatmoClient::getMeasure(const MeasureParams &params, NetatmoMeasureResponse &response) {
     if (!isAuthenticated()) return -1;
 
     String url = "https://api.netatmo.com/api/getmeasure?";
@@ -76,7 +77,7 @@ int NetatmoClient::getMeasure(const MeasureParams &params, NetatmoMeasureRespons
     url += "&type=" + params.type;
 
     JsonDocument doc(&allocator);
-    const int status = sendRequest("GET", url, "", doc, true);
+    const bool status = sendRequest("GET", url, "", doc, true);
     if (status) {
         response = NetatmoMeasureResponse::fromJson(doc, params.moduleId.length() > 0);
     }
@@ -101,6 +102,7 @@ bool NetatmoClient::sendRequest(const String &method, const String &url, const S
         const DeserializationError error = deserializeJson(responseDoc, responseBody);
         if (error != DeserializationError::Ok) {
             LogEvent::post("Failed to deserialize JSON: %s\n", error.c_str());
+            LogEvent::post("%s\n", responseBody.c_str());
             return false;
         }
     }
@@ -143,7 +145,7 @@ NetatmoClient::MeasureParams NetatmoClient::makeLast24hParams(const String& type
     p.deviceId = String(NETATMO_MAC);
     p.moduleId = moduleId;
     p.scale = "30min";
-    const unsigned long now = timeClient.getEpochTime();
+    const unsigned long now = epoch_time(true);
     p.dateEnd = now;
     p.dateBegin = now > 86400UL ? static_cast<long>(now - 86400UL) : 0;
     p.optimize = true;   // compact body format and predictable ordering
@@ -152,17 +154,17 @@ NetatmoClient::MeasureParams NetatmoClient::makeLast24hParams(const String& type
     return p;
 }
 
-int NetatmoClient::getLast24hTemperature(const String& moduleId, NetatmoMeasureResponse& response) {
+bool NetatmoClient::getLast24hTemperature(const String& moduleId, NetatmoMeasureResponse& response) {
     const MeasureParams p = makeLast24hParams("temperature", moduleId);
     return getMeasure(p, response);
 }
 
-int NetatmoClient::getLast24hPressure(const String& moduleId, NetatmoMeasureResponse& response) {
+bool NetatmoClient::getLast24hPressure(const String& moduleId, NetatmoMeasureResponse& response) {
     const MeasureParams p = makeLast24hParams("pressure", moduleId);
     return getMeasure(p, response);
 }
 
-int NetatmoClient::getLast24hHumidity(NetatmoMeasureResponse& response) {
+bool NetatmoClient::getLast24hHumidity(NetatmoMeasureResponse& response) {
     MeasureParams p = makeLast24hParams("humidity", "");
     return getMeasure(p, response);
 }

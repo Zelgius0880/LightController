@@ -17,8 +17,7 @@
 #include "leds/task_leds.h"
 
 extern QueueHandle_t lightControllerQueue;
-extern WiFiClientSecure sharedClient;
-HueApiClient api(sharedClient, BRIDGE_IP, 443, true);
+HueApiClient api(BRIDGE_IP, 443, true);
 
 LightsDatabaseManager dbManager(DB_PATH);
 

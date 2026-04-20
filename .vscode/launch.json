@@ -12,9 +12,9 @@
             "type": "platformio-debug",
             "request": "launch",
             "name": "PIO Debug",
-            "executable": "/home/floriandupierreux/PlatformIO/LightController/.pio/build/freenove_esp32_s3_wroom/firmware.elf",
+            "executable": "E:/Projects/LightController/.pio/build/freenove_esp32_s3_wroom/firmware.elf",
             "projectEnvName": "freenove_esp32_s3_wroom",
-            "toolchainBinDir": "/home/floriandupierreux/.platformio/packages/toolchain-xtensa-esp32s3/bin",
+            "toolchainBinDir": "C:/Users/Zelgius/.platformio/packages/toolchain-xtensa-esp32s3/bin",
             "internalConsoleOptions": "openOnSessionStart",
             "preLaunchTask": {
                 "type": "PlatformIO",
@@ -25,18 +25,18 @@
             "type": "platformio-debug",
             "request": "launch",
             "name": "PIO Debug (skip Pre-Debug)",
-            "executable": "/home/floriandupierreux/PlatformIO/LightController/.pio/build/freenove_esp32_s3_wroom/firmware.elf",
+            "executable": "E:/Projects/LightController/.pio/build/freenove_esp32_s3_wroom/firmware.elf",
             "projectEnvName": "freenove_esp32_s3_wroom",
-            "toolchainBinDir": "/home/floriandupierreux/.platformio/packages/toolchain-xtensa-esp32s3/bin",
+            "toolchainBinDir": "C:/Users/Zelgius/.platformio/packages/toolchain-xtensa-esp32s3/bin",
             "internalConsoleOptions": "openOnSessionStart"
         },
         {
             "type": "platformio-debug",
             "request": "launch",
             "name": "PIO Debug (without uploading)",
-            "executable": "/home/floriandupierreux/PlatformIO/LightController/.pio/build/freenove_esp32_s3_wroom/firmware.elf",
+            "executable": "E:/Projects/LightController/.pio/build/freenove_esp32_s3_wroom/firmware.elf",
             "projectEnvName": "freenove_esp32_s3_wroom",
-            "toolchainBinDir": "/home/floriandupierreux/.platformio/packages/toolchain-xtensa-esp32s3/bin",
+            "toolchainBinDir": "C:/Users/Zelgius/.platformio/packages/toolchain-xtensa-esp32s3/bin",
             "internalConsoleOptions": "openOnSessionStart",
             "loadMode": "manual"
         }

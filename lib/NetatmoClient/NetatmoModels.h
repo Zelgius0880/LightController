@@ -6,11 +6,7 @@
 #include <array>
 #include <ctime>
 
-#include <NTPClient.h>
-
-#include "allocator/psram_allocator.h"
-
-extern NTPClient timeClient;
+#include "time/time_utils.h"
 
 struct NetatmoToken {
     String accessToken;
@@ -23,9 +19,9 @@ struct NetatmoToken {
     bool isValid() const {
         if (accessToken.length() == 0) return false;
         // Current time in seconds. 
-        unsigned long now = timeClient.getEpochTime();
+        const auto now = epoch_time();
         if (now < 1000000000UL) return true; // NTP not yet synchronized, assume valid for now
-        return now < (creationTimestamp + expiresIn - 60); // 1 min buffer
+        return now < (creationTimestamp + expiresIn - 5*60); // 5 min buffer
     }
 
     void fromJson(const JsonVariantConst& json) {
@@ -35,7 +31,7 @@ struct NetatmoToken {
         if (json["creation_timestamp"].is<unsigned long>()) {
             creationTimestamp = json["creation_timestamp"].as<unsigned long>();
         } else {
-            creationTimestamp = timeClient.getEpochTime();
+            creationTimestamp = epoch_time();
         }
     }
 

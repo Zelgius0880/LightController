@@ -24,6 +24,7 @@
 #include "leds/task_leds.h"
 #include "logger/task_logger.h"
 
+struct OpenMeteoForecastResponse;
 extern SemaphoreHandle_t fsMutex;
 #define IMAGE_FILENAME "/image.jpg"
 
@@ -37,7 +38,7 @@ bool ImageRenderer::renderImage(
     const NetatmoMeasureResponse &tempModule,
     const NetatmoMeasureResponse &pressureMain,
     const NetatmoMeasureResponse &humidityMain,
-    const OWMForecastResponse &owmForecast
+    const OpenMeteoForecastResponse &owmForecast
 ) {
     LedEvent::blink(0, 0, 255, 0, 100);
     ::File file = LittleFS.open("/image.bin", "rb");
@@ -52,7 +53,7 @@ bool ImageRenderer::renderImage(
 
     if ((image = static_cast<uint8_t *>(ps_malloc(size))) == nullptr) {
         LogEvent::post("Failed to apply for black memory... . Requested: %d, Remaining: %d\n", size,
-                                 ESP.getFreePsram());
+                       ESP.getFreePsram());
         DEV_Module_Exit();
         return false;
     }
@@ -327,44 +328,56 @@ void ImageRenderer::drawWeather(const uint16_t x, const uint16_t y, const uint16
     size_t width, height;
     const uint8_t *image;
 
-    if (iconCode >= 200 && iconCode < 300) {
-        width = thunderstorms_width;
-        height = thunderstorms_height;
-        image = thunderstorms_data;
-    } else if (iconCode >= 300 && iconCode < 500) {
-        width = rainy_3_width;
-        height = rainy_3_height;
-        image = rainy_3_data;
-    } else if (iconCode >= 500 && iconCode < 600) {
-        width = rainy_3_day_width;
-        height = rainy_3_day_height;
-        image = rainy_3_day_data;
-    } else if (iconCode >= 600 && iconCode < 700) {
-        width = snowy_3_width;
-        height = snowy_3_height;
-        image = snowy_3_data;
-        if (iconCode >= 611 && iconCode <= 616) {
-            width = rain_and_snow_mix_width;
-            height = rain_and_snow_mix_height;
-            image = rain_and_snow_mix_data;
-        }
-    } else if (iconCode >= 700 && iconCode < 800) {
-        width = haze_width;
-        height = haze_height;
-        image = haze_data;
-        if (iconCode == 741 || iconCode <= 701) {
-            width = fog_day_width;
-            height = fog_day_height;
-            image = fog_day_data;
-        }
-    } else if (iconCode == 800) {
+    // Mapping Open Meteo WMO codes to existing icons
+    // https://open-meteo.com/en/docs
+    if (iconCode == 0) { // Clear sky
         width = clear_day_width;
         height = clear_day_height;
         image = clear_day_data;
-    } else if (iconCode == 801) {
+    } else if (iconCode == 1 || iconCode == 2) { // Mainly clear, partly cloudy
         width = cloudy_3_day_width;
         height = cloudy_3_day_height;
         image = cloudy_3_day_data;
+    } else if (iconCode == 3) { // Overcast
+        width = cloudy_width;
+        height = cloudy_height;
+        image = cloudy_data;
+    } else if (iconCode == 40 || iconCode == 49) { // Fog and depositing rime fog
+        width = fog_day_width;
+        height = fog_day_height;
+        image = fog_day_data;
+    } else if (iconCode >= 50 && iconCode <= 59) { // Drizzle and Rain
+        width = rainy_3_day_width;
+        height = rainy_3_day_height;
+        image = rainy_3_day_data;
+    } else if (iconCode >= 60 && iconCode <= 65) { // Drizzle and Rain
+        width = rainy_3_width;
+        height = rainy_3_height;
+        image = rainy_3_data;
+    } else if (iconCode >= 66 && iconCode <= 69) { // Drizzle and Rain
+        width = rain_and_snow_mix_width;
+        height = rain_and_snow_mix_height;
+        image = rain_and_snow_mix_data;
+    } else if (iconCode >= 71 && iconCode <= 79) { // Snow fall
+        width = snowy_3_width;
+        height = snowy_3_height;
+        image = snowy_3_data;
+    } else if (iconCode >= 80 && iconCode <= 82 || iconCode == 91 || iconCode == 92) { // Rain showers
+        width = rainy_3_width;
+        height = rainy_3_height;
+        image = rainy_3_data;
+    } else if (iconCode == 85 || iconCode == 86) { // Snow showers
+        width = snowy_3_width;
+        height = snowy_3_height;
+        image = snowy_3_data;
+    } else if (iconCode >= 87 && iconCode <= 90|| iconCode == 93|| iconCode == 94) { // Snow showers
+        width = rain_and_snow_mix_width;
+        height = rain_and_snow_mix_height;
+        image = rain_and_snow_mix_data;
+    } else if (iconCode >= 95) { // Thunderstorm
+        width = thunderstorms_width;
+        height = thunderstorms_height;
+        image = thunderstorms_data;
     } else {
         width = cloudy_width;
         height = cloudy_height;
@@ -375,7 +388,7 @@ void ImageRenderer::drawWeather(const uint16_t x, const uint16_t y, const uint16
 }
 
 void ImageRenderer::drawWeatherForecast(
-    const OWMForecastResponse &forecast,
+    const OpenMeteoForecastResponse &forecast,
     // ReSharper disable once CppDFAConstantParameter
     const uint16_t x,
     // ReSharper disable once CppDFAConstantParameter
@@ -392,7 +405,7 @@ void ImageRenderer::drawWeatherForecast(
     const int itemWidth = (w - 2 * padding) / count;
 
     // Current time for "Today" check
-    const time_t now = timeClient.getEpochTime();
+    const time_t now = epoch_time(true);
     const tm *nowInfo = localtime(&now);
     const int todayYDay = nowInfo->tm_yday;
     const int todayYear = nowInfo->tm_year;

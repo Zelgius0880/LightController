@@ -8,7 +8,7 @@
 
 class NetatmoClient {
 public:
-    NetatmoClient(WiFiClientSecure& client);
+    NetatmoClient();
 
     // API methods
     bool getToken(const String& code);
@@ -25,12 +25,12 @@ public:
         String type = "temperature";
     };
 
-    int getMeasure(const MeasureParams& params, NetatmoMeasureResponse& response);
+    bool getMeasure(const MeasureParams& params, NetatmoMeasureResponse& response);
 
     // Convenience helpers for common queries (24h @ 30min => <= 48 samples)
-    int getLast24hTemperature(const String& moduleId, NetatmoMeasureResponse& response);
-    int getLast24hPressure(const String& moduleId, NetatmoMeasureResponse& response);
-    int getLast24hHumidity(NetatmoMeasureResponse& response); // main device (no module), single latest value
+    bool getLast24hTemperature(const String& moduleId, NetatmoMeasureResponse& response);
+    bool getLast24hPressure(const String& moduleId, NetatmoMeasureResponse& response);
+    bool getLast24hHumidity(NetatmoMeasureResponse& response); // main device (no module), single latest value
 
     // Lifecycle
     bool begin();
@@ -43,7 +43,7 @@ public:
 
 private:
     NetatmoToken _token;
-    WiFiClientSecure& _secureClient;
+    WiFiClientSecure _secureClient;
     HTTPClient _http;
 
     bool sendRequest(const String &method, const String &url, const String &body, JsonDocument &responseDoc,

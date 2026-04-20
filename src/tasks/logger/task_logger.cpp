@@ -46,6 +46,8 @@ void webSocketEvent(const uint8_t num, const WStype_t type, const uint8_t *, siz
     }
 }
 
+char timeStringBuff[50];
+
 [[noreturn]] void loggerTask(void *) {
     webSocket.begin();
     webSocket.onEvent(webSocketEvent);
@@ -70,7 +72,8 @@ void webSocketEvent(const uint8_t num, const WStype_t type, const uint8_t *, siz
 
         if (xQueueReceive(logQueue, &packet, 10)) {
             if (packet.payload != nullptr) {
-                webSocket.broadcastTXT(timeClient.getFormattedTime() + ": " + packet.payload);
+                time_string(timeStringBuff);
+                webSocket.broadcastTXT(String(timeStringBuff) + ": " + packet.payload);
 
                 if (packet.isPSRAM) {
                     free(packet.payload);

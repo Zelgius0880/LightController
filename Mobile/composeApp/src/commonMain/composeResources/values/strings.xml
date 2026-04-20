@@ -1,0 +1,18 @@
+<resources>
+
+    <string name="dashboard">Dashboard</string>
+    <string name="image">Image</string>
+    <string name="lights">Lights</string>
+    <string name="settings">Settings</string>
+    <string name="back">back</string>
+    <string name="connect_and_save">Connect and save</string>
+    <string name="connection_success">Connection success</string>
+    <string name="connection_failed">Connection failed</string>
+    <string name="server_ip_label">Server IP/Address</string>
+    <string name="server_port_label">Server Port</string>
+    <string name="server_settings">Server settings</string>
+    <string name="connected">Connected</string>
+    <string name="disconnected">Disconnected</string>
+    <string name="test_connection_and_save">Test connection and save</string>
+    <string name="connecting">Connecting ...</string>
+</resources>

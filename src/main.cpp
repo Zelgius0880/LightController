@@ -15,7 +15,6 @@
 #include "buzzer/task_buzzer.h"
 #include <esp_task_wdt.h>
 #include "HueApiClient.h"
-#include <NTPClient.h>
 
 #include "DEV_Config.h"
 #include "EPD_13in3e.h"
@@ -35,9 +34,7 @@ QueueHandle_t buzzerQueue;
 
 SemaphoreHandle_t fsMutex;
 
-WiFiUDP ntpUDP;
-NTPClient timeClient(ntpUDP);
-WiFiClientSecure sharedClient;
+auto ntpServer = "pool.ntp.org";
 
 PsramAllocator allocator;
 
@@ -89,8 +86,10 @@ void setup() {
         Serial.print(".");
         neopixelWrite(RGB_BUILTIN, 0, 0, 0);
     }
-    timeClient.begin();
-    sharedClient.setInsecure();
+
+#ifdef NTP_TIMEZONE
+    configTzTime(NTP_TIMEZONE, ntpServer);
+#endif
     esp_task_wdt_init(WDT_TIMEOUT_SECONDS, true);
 
     Serial.println();
@@ -103,9 +102,6 @@ void setup() {
     webserverQueue = xQueueCreate(5, sizeof(WebServerEvent));
     renderingQueue = xQueueCreate(1, sizeof(ImageRendererEvent));
     buzzerQueue = xQueueCreate(1, sizeof(BuzzerEvent));
-
-    sharedClient.setTimeout(5);
-    sharedClient.setHandshakeTimeout(5);
 
     if (lightControllerQueue != nullptr && ledQueue != nullptr && logQueue != nullptr && webserverQueue != nullptr &&
         renderingQueue != nullptr && buzzerQueue != nullptr) {
@@ -130,7 +126,6 @@ uint32_t lastValue = 0;
 uint32_t lastTime = 0;
 
 void loop() {
-    timeClient.update();
     if (receiver.available()) {
         const uint64_t protocol = receiver.getReceivedProtocol();
         const uint32_t value = receiver.getReceivedValue();
