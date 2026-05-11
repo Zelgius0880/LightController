@@ -98,6 +98,41 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+    delete:
+      summary: Delete a Light Group
+      description: Deletes a light group and its associated switches and group-light associations.
+      parameters:
+        - in: query
+          name: id
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: The ID of the group to delete.
+      responses:
+        '200':
+          description: Group deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+        '400':
+          description: Missing id parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Failed to delete group
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /lights:
     get:
       summary: Get Lights by Group ID
@@ -158,6 +193,47 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+    delete:
+      summary: Delete a Light from a Group
+      description: Removes a light from a specific group. If the light is no longer referenced by any group, it is removed from the lights table.
+      parameters:
+        - in: query
+          name: uid
+          required: true
+          schema:
+            type: string
+          description: The UID of the light to delete.
+        - in: query
+          name: groupId
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: The ID of the group to remove the light from.
+      responses:
+        '200':
+          description: Light removed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+        '400':
+          description: Missing uid or groupId parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Failed to delete light
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /switches:
     get:
       summary: Get Switches by Group ID
@@ -213,6 +289,40 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Failed to upsert switch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      summary: Delete a Switch
+      description: Deletes a switch from the local database.
+      parameters:
+        - in: query
+          name: uid
+          required: true
+          schema:
+            type: string
+          description: The UID of the switch to delete.
+      responses:
+        '200':
+          description: Switch deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+        '400':
+          description: Missing uid parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Failed to delete switch
           content:
             application/json:
               schema:
@@ -511,6 +621,7 @@ components:
         - brightness
         - x
         - y
+        - mirek
       properties:
         id:
           type: integer
@@ -536,6 +647,10 @@ components:
           format: float
           description: Y-coordinate for the group's position.
           example: 0.5
+        mirek:
+          type: integer
+          description: Color temperature in mireks.
+          example: 300
 
     Light:
       type: object
@@ -547,6 +662,7 @@ components:
         - brightness
         - x
         - y
+        - mirek
         - groupId
       properties:
         uid:
@@ -585,6 +701,10 @@ components:
           format: int64
           description: ID of the group this light belongs to.
           example: 1
+        mirek:
+          type: integer
+          description: Color temperature in mireks.
+          example: 300
 
     Switch:
       type: object

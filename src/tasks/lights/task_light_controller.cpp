@@ -101,6 +101,9 @@ void handleSwitch(const LightEvent &receivedEvent) {
                     xy["x"] = light.x;
                     xy["y"] = light.y;
                 }
+                if (light.mirek > 0) {
+                    updateDoc["color_temperature"]["mirek"] = light.mirek;
+                }
             }
 
             const auto response = api.updateLight(light.uid.c_str(), updateDoc.as<JsonVariantConst>());

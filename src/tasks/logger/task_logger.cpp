@@ -39,7 +39,7 @@ void webSocketEvent(const uint8_t num, const WStype_t type, const uint8_t *, siz
             break;
         case WStype_CONNECTED: {
             clientNum = num;
-            webSocket.sendTXT(num, "Connected");
+            webSocket.sendTXT(num, getStatusJson().c_str());
         }
         break;
         default: break;

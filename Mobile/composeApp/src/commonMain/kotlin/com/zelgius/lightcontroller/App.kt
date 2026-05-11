@@ -14,6 +14,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
+import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
 import androidx.compose.material3.adaptive.layout.calculatePaneScaffoldDirective
 import androidx.compose.material3.adaptive.navigation.BackNavigationBehavior
 import androidx.compose.material3.adaptive.navigation3.SupportingPaneSceneStrategy
@@ -33,10 +34,14 @@ import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.ui.NavDisplay
 import com.zelgius.lightcontroller.navigation.Home
+import com.zelgius.lightcontroller.navigation.Image
+import com.zelgius.lightcontroller.navigation.Lights
 import com.zelgius.lightcontroller.navigation.Placeholder
 import com.zelgius.lightcontroller.navigation.Settings
 import com.zelgius.lightcontroller.ui.home.HomeScreen
+import com.zelgius.lightcontroller.ui.lights.LightScreen
 import com.zelgius.lightcontroller.ui.settings.SettingsScreen
+import com.zelgius.lightcontroller.ui.theme.AppTheme
 import lightcontroller.composeapp.generated.resources.Res
 import lightcontroller.composeapp.generated.resources.dashboard
 import lightcontroller.composeapp.generated.resources.image
@@ -62,9 +67,9 @@ fun App() {
     val backStack = createBackStack()
     var currentDestination: AppDestinations? by rememberSaveable { mutableStateOf(null) }
 
-    MaterialTheme {
+    AppTheme {
         BoxWithConstraints {
-            val windowAdaptiveInfo = currentWindowAdaptiveInfo()
+            val windowAdaptiveInfo = currentWindowAdaptiveInfoV2()
             val directive = remember(windowAdaptiveInfo) {
                 calculatePaneScaffoldDirective(windowAdaptiveInfo)
                     .copy(
@@ -74,7 +79,7 @@ fun App() {
                     )
             }
 
-            var isSinglePane = directive.maxHorizontalPartitions == 1
+            val isSinglePane = directive.maxHorizontalPartitions == 1
 
             NavigationSuiteScaffold(
                 navigationSuiteItems = {
@@ -100,8 +105,8 @@ fun App() {
                                 backStack.add(
                                     when (it) {
                                         AppDestinations.Dashboard -> Home
-                                        AppDestinations.Lights -> TODO()
-                                        AppDestinations.Image -> TODO()
+                                        AppDestinations.Lights -> Lights
+                                        AppDestinations.Image -> Image
                                         AppDestinations.Settings -> Settings
                                     }
                                 )
@@ -116,7 +121,6 @@ fun App() {
                     directive = directive
                 )
 
-
                 NavDisplay(
                     backStack = backStack,
                     sceneStrategies = listOf(supportingPaneStrategy),
@@ -125,15 +129,10 @@ fun App() {
                         entry<Home>(
                             metadata = SupportingPaneSceneStrategy.mainPane()
                         ) {
-                            HomeScreen() {
+                            currentDestination = AppDestinations.Dashboard
+                            HomeScreen(isSinglePane) {
                                 backStack.add(it)
                             }
-                        }
-                        entry<Placeholder>(
-                            metadata = SupportingPaneSceneStrategy.supportingPane()
-                        ) {
-                            currentDestination = null
-                            PlaceholderScreen()
                         }
 
                         entry<Settings>(
@@ -147,6 +146,30 @@ fun App() {
                                     }
                                 } else null)
                         }
+
+                        entry<Lights>(
+                            metadata = SupportingPaneSceneStrategy.supportingPane()
+                        ) {
+                            currentDestination = AppDestinations.Lights
+                            LightScreen()
+                        }
+
+
+                        entry<Image>(
+                            metadata = SupportingPaneSceneStrategy.supportingPane()
+                        ) {
+                            currentDestination = AppDestinations.Image
+                            PlaceholderScreen()
+                        }
+
+
+                        entry<Placeholder>(
+                            metadata = SupportingPaneSceneStrategy.supportingPane()
+                        ) {
+                            currentDestination = null
+                            PlaceholderScreen()
+                        }
+
                     }
                 )
             }

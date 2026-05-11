@@ -14,6 +14,8 @@ sealed class Route(val name: String): NavKey {
                 Home.name -> Home
                 Settings.name -> Settings
                 Placeholder.name -> Placeholder
+                Lights.name -> Lights
+                Image.name -> Image
                 else -> Home
             }
     }
@@ -29,4 +31,13 @@ data object Settings : Route("settings")
 
 @Serializable
 data object Placeholder : Route("placeholder")
+
+
+
+@Serializable
+data object Lights : Route("lights")
+
+
+@Serializable
+data object Image : Route("image")
 

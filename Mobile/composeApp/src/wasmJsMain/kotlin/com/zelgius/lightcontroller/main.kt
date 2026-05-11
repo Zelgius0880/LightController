@@ -15,6 +15,7 @@ fun main() {
         modules()
     }
     val body = document.body ?: return
+
     ComposeViewport {
         App()
     }

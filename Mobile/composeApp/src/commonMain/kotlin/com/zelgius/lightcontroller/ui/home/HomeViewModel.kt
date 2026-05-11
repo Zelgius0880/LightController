@@ -2,15 +2,14 @@ package com.zelgius.lightcontroller.ui.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.zelgius.lightcontroller.domain.settings.SettingsRepository
-import com.zelgius.lightcontroller.domain.web.WebSocketMessage
-import com.zelgius.lightcontroller.domain.web.WebSocketRepository
+import com.zelgius.lightcontroller.domain.repository.settings.SettingsRepository
+import com.zelgius.lightcontroller.domain.repository.web.WebSocketMessage
+import com.zelgius.lightcontroller.domain.repository.web.WebSocketRepository
 import com.zelgius.lightcontroller.utils.updateTo
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.koin.core.annotation.KoinViewModel
 
@@ -43,6 +42,7 @@ class HomeViewModel(
                             it.copy(status = m)
                         }
                     }
+
                 }
             }
         }
@@ -91,7 +91,7 @@ sealed interface HomeState {
         val logs: List<WebSocketMessage.Log> = listOf(),
         val status: WebSocketMessage.Status = WebSocketMessage.Status(),
         val connected: Boolean = false,
-        val settingsSet: Boolean = true
+        val settingsSet: Boolean? = null
     ) : HomeState
 
 }

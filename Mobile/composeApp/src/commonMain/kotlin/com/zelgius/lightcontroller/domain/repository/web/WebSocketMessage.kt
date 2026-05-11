@@ -1,4 +1,4 @@
-package com.zelgius.lightcontroller.domain.web
+package com.zelgius.lightcontroller.domain.repository.web
 
 import io.ktor.serialization.JsonConvertException
 import kotlinx.datetime.LocalDate
@@ -14,20 +14,27 @@ sealed interface WebSocketMessage {
     companion object {
 
         val dateFormat = LocalDateTime.Format {
-        date(LocalDate.Formats.ISO) // Handles YYYY-MM-DD
-        char(' ')                           // Handles the space
-        time(LocalTime.Formats.ISO) // Handles HH:MM:SS
-    }
+            date(LocalDate.Formats.ISO) // Handles YYYY-MM-DD
+            char(' ')                           // Handles the space
+            time(LocalTime.Formats.ISO) // Handles HH:MM:SS
+        }
+
         fun fromString(s: String): WebSocketMessage {
-            return try{
+            return try {
                 Json.decodeFromString<Status>(s)
-            } catch (_: Exception) {
-                val split = s.split(":", limit =  2)
-                if(split.size > 1) {
-                    Log(time = dateFormat.parseOrNull(split.first()), message = split.last())
-                } else {
-                    Log(time = null, message = s)
-                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+
+                val regex = Regex("""^(.{19}):\s(.*)$""")
+                val matchResult = regex.find(s)
+
+                if (matchResult != null) {
+                    val (timeString, logMessage) = matchResult.destructured
+                    Log(time = dateFormat.parseOrNull(timeString), message = logMessage.trimEnd())
+
+                } else
+                    Log(time = null, message = s.trimEnd())
+
             }
         }
     }
@@ -36,21 +43,21 @@ sealed interface WebSocketMessage {
     data class Log(
         val time: LocalDateTime?,
         val message: String
-    ): WebSocketMessage
+    ) : WebSocketMessage
 
     @Serializable
     data class Status(
         val authenticated: Boolean = false,
         val username: String = "",
         val totalBytes: Int = 0,
-        val usedBytes: Int= 0,
+        val usedBytes: Int = 0,
         val netatmo: Netatmo = Netatmo(),
         val fsTotal: Int = 0,
         val fsUsed: Int = 0,
         val firmware: String = "",
         val heapTotal: Int = 0,
-        val heapUsed: Int = 0
-    ) : WebSocketMessage{
+        val heapFree: Int = 0
+    ) : WebSocketMessage {
         @Serializable
         data class Netatmo(
             val authenticated: Boolean = false,

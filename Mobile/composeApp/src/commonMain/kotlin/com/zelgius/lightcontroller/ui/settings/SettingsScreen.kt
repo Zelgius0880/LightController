@@ -13,11 +13,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.zelgius.lightcontroller.selfHosted
+import io.github.vinceglb.filekit.FileKit
+import io.github.vinceglb.filekit.dialogs.FileKitType
+import io.github.vinceglb.filekit.dialogs.openFilePicker
+import kotlinx.coroutines.launch
 import lightcontroller.composeapp.generated.resources.Res
 import lightcontroller.composeapp.generated.resources.back
 import lightcontroller.composeapp.generated.resources.connected
 import lightcontroller.composeapp.generated.resources.connecting
+import lightcontroller.composeapp.generated.resources.create_netatmo_token
+import lightcontroller.composeapp.generated.resources.database_backup
 import lightcontroller.composeapp.generated.resources.disconnected
+import lightcontroller.composeapp.generated.resources.export
+import lightcontroller.composeapp.generated.resources.import
+import lightcontroller.composeapp.generated.resources.netatmo_token
 import lightcontroller.composeapp.generated.resources.server_ip_label
 import lightcontroller.composeapp.generated.resources.server_port_label
 import lightcontroller.composeapp.generated.resources.server_settings
@@ -45,13 +55,23 @@ fun SettingsScreen(
         }
     }
 
+    val coroutineScope = rememberCoroutineScope()
+
     Settings(
         snackbarHostState = snackbarHostState,
         state = state,
         onBack = onBack,
         onIpChanged = viewModel::onIpChanged,
         onPortChanged = viewModel::onPortChanged,
-        onTryConnection = viewModel::testConnection
+        onTryConnection = viewModel::testConnection,
+        onExport = viewModel::onExport,
+        onImport = {
+            coroutineScope.launch {
+                val file = FileKit.openFilePicker(type = FileKitType.File("db"))
+                if(file != null) viewModel.onImport(file)
+            }
+        },
+        onNetatmoToken = viewModel::openNetatmoTokenTab
     )
 }
 
@@ -63,6 +83,9 @@ private fun Settings(
     onIpChanged: (String) -> Unit = {},
     onPortChanged: (String) -> Unit = {},
     onTryConnection: () -> Unit = {},
+    onImport: () -> Unit = {},
+    onExport: () -> Unit = {},
+    onNetatmoToken: () -> Unit = {},
     onBack: (() -> Unit)? = null
 ) {
 
@@ -94,7 +117,10 @@ private fun Settings(
                 onTryConnection = onTryConnection,
                 onPortChanged = onPortChanged,
                 onIpChanged = onIpChanged,
-                state = state
+                state = state,
+                onImport = onImport,
+                onExport = onExport,
+                onNetatmoToken = onNetatmoToken
             )
         }
     }
@@ -107,13 +133,15 @@ private fun Content(
     onIpChanged: (String) -> Unit,
     onPortChanged: (String) -> Unit,
     onTryConnection: () -> Unit,
+    onImport: () -> Unit,
+    onExport: () -> Unit,
+    onNetatmoToken: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
         modifier = modifier
             .fillMaxSize()
             .padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
 
@@ -151,30 +179,65 @@ private fun Content(
             Text(stringResource(Res.string.test_connection_and_save))
         }
 
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
+        if (!selfHosted) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
 
-            if (connected != null) {
-                val statusColor =
-                    if (state.connected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
-                Surface(
-                    modifier = Modifier.size(12.dp),
-                    shape = MaterialTheme.shapes.small,
-                    color = statusColor
-                ) {}
+                if (connected != null) {
+                    val statusColor =
+                        if (state.connected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                    Surface(
+                        modifier = Modifier.size(12.dp),
+                        shape = MaterialTheme.shapes.small,
+                        color = statusColor
+                    ) {}
 
-                Text(
-                    text = stringResource(if (state.connected) Res.string.connected else Res.string.disconnected),
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            } else {
-                CircularWavyProgressIndicator(modifier = Modifier.size(32.dp))
+                    Text(
+                        text = stringResource(if (state.connected) Res.string.connected else Res.string.disconnected),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                } else {
+                    CircularWavyProgressIndicator(modifier = Modifier.size(32.dp))
 
-                Text(stringResource(Res.string.connecting))
+                    Text(stringResource(Res.string.connecting))
+                }
             }
         }
+
+        Text(
+            text = stringResource(Res.string.database_backup),
+            style = MaterialTheme.typography.headlineMedium
+        )
+
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            Button(
+                onClick = onImport
+            ) {
+                Text(stringResource(Res.string.import))
+            }
+            Button(
+                onClick = onExport
+            ) {
+                Text(stringResource(Res.string.export))
+            }
+        }
+
+        if( selfHosted) {
+            Text(
+                text = stringResource(Res.string.netatmo_token),
+                style = MaterialTheme.typography.headlineMedium
+            )
+
+            Button(
+                onClick = onNetatmoToken
+            ) {
+                Text(stringResource(Res.string.create_netatmo_token))
+            }
+        }
+
+
     }
 }
 

@@ -1,5 +1,7 @@
 #include <LightsDatabaseManager.h>
 #include <LittleFS.h>
+
+#include "logger/task_logger.h"
 #define DB_PATH "/lights.db"
 
 LightsDatabaseManager::LightsDatabaseManager(const char *dbPath) : _dbPath(dbPath), _db(nullptr) {
@@ -42,7 +44,8 @@ bool LightsDatabaseManager::createTables() const {
             "name TEXT, "
             "brightness REAL, "
             "x REAL, "
-            "y REAL);";
+            "y REAL, "
+            "mirek INTEGER);";
 
     const auto sqlLights = "CREATE TABLE IF NOT EXISTS lights ("
             "uid TEXT PRIMARY KEY, "
@@ -56,6 +59,7 @@ bool LightsDatabaseManager::createTables() const {
             "x REAL, "
             "y REAL, "
             "state TEXT, "
+            "mirek INTEGER, "
             "PRIMARY KEY(groupId, lightUid), "
             "FOREIGN KEY(groupId) REFERENCES groups(id), "
             "FOREIGN KEY(lightUid) REFERENCES lights(uid));";
@@ -73,8 +77,9 @@ bool LightsDatabaseManager::createTables() const {
 bool LightsDatabaseManager::executeQuery(const char *sql) const {
     char *zErrMsg = nullptr;
     const int rc = sqlite3_exec(_db, sql, nullptr, nullptr, &zErrMsg);
+
     if (rc != SQLITE_OK) {
-        Serial.printf("SQL error: %s\n", zErrMsg);
+        LogEvent::post("SQL error: %s\n", zErrMsg);
         sqlite3_free(zErrMsg);
         return false;
     }
@@ -83,76 +88,195 @@ bool LightsDatabaseManager::executeQuery(const char *sql) const {
 
 bool LightsDatabaseManager::upsertGroup(const Group &group) const {
     sqlite3_stmt *res;
-    const auto sql = "INSERT INTO groups (id, name, brightness, x, y) VALUES (?, ?, ?, ?, ?) "
-            "ON CONFLICT(id) DO UPDATE SET name=excluded.name, brightness=excluded.brightness, x=excluded.x, y=excluded.y;";
+    const auto updateSql = "UPDATE groups SET name=?, brightness=?, x=?, y=?, mirek=? WHERE id=?;";
 
-    if (sqlite3_prepare_v2(_db, sql, -1, &res, nullptr) != SQLITE_OK) return false;
+    if (sqlite3_prepare_v2(_db, updateSql, -1, &res, nullptr) != SQLITE_OK) {
+        LogEvent::post(sqlite3_errmsg(_db));
+        return false;
+    }
 
-    sqlite3_bind_int64(res, 1, static_cast<sqlite3_int64>(group.id));
-    sqlite3_bind_text(res, 2, group.name.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_double(res, 3, group.brightness);
-    sqlite3_bind_double(res, 4, group.x);
-    sqlite3_bind_double(res, 5, group.y);
+    sqlite3_bind_text(res, 1, group.name.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_double(res, 2, group.brightness);
+    sqlite3_bind_double(res, 3, group.x);
+    sqlite3_bind_double(res, 4, group.y);
+    sqlite3_bind_int(res, 5, group.mirek);
+    sqlite3_bind_int64(res, 6, static_cast<sqlite3_int64>(group.id));
 
-    const int rc = sqlite3_step(res);
+    int rc = sqlite3_step(res);
     sqlite3_finalize(res);
-    return rc == SQLITE_DONE;
+
+    if (rc != SQLITE_DONE) {
+        LogEvent::post(sqlite3_errmsg(_db));
+        return false;
+    }
+
+    if (sqlite3_changes(_db) == 0) {
+        const auto insertSql = "INSERT INTO groups (id, name, brightness, x, y, mirek) VALUES (?, ?, ?, ?, ?, ?);";
+        if (sqlite3_prepare_v2(_db, insertSql, -1, &res, nullptr) != SQLITE_OK) {
+            LogEvent::post(sqlite3_errmsg(_db));
+            return false;
+        }
+
+        sqlite3_bind_int64(res, 1, static_cast<sqlite3_int64>(group.id));
+        sqlite3_bind_text(res, 2, group.name.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_double(res, 3, group.brightness);
+        sqlite3_bind_double(res, 4, group.x);
+        sqlite3_bind_double(res, 5, group.y);
+        sqlite3_bind_int(res, 6, group.mirek);
+
+        rc = sqlite3_step(res);
+        sqlite3_finalize(res);
+
+        if (rc != SQLITE_DONE) {
+            LogEvent::post(sqlite3_errmsg(_db));
+            return false;
+        }
+    }
+
+    return true;
 }
 
 bool LightsDatabaseManager::upsertLight(const Light &light) const {
     sqlite3_stmt *res;
-    // 1. Upsert into lights base table
-    const auto sql1 = "INSERT INTO lights (uid, name, type) VALUES (?, ?, ?) "
-            "ON CONFLICT(uid) DO UPDATE SET name=excluded.name, type=excluded.type;";
+    // 1. Update/Insert into lights base table
+    const auto updateSql1 = "UPDATE lights SET name=?, type=? WHERE uid=?;";
 
-    if (sqlite3_prepare_v2(_db, sql1, -1, &res, nullptr) != SQLITE_OK) return false;
+    if (sqlite3_prepare_v2(_db, updateSql1, -1, &res, nullptr) != SQLITE_OK) {
+        LogEvent::post(sqlite3_errmsg(_db));
+        return false;
+    }
 
-    sqlite3_bind_text(res, 1, light.uid.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(res, 2, light.name.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(res, 3, light.type.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(res, 1, light.name.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(res, 2, light.type.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(res, 3, light.uid.c_str(), -1, SQLITE_TRANSIENT);
 
     int rc = sqlite3_step(res);
     sqlite3_finalize(res);
-    if (rc != SQLITE_DONE) return false;
 
-    // 2. Upsert into group_lights join table
-    const auto sql2 = "INSERT INTO group_lights (groupId, lightUid, brightness, x, y, state) VALUES (?, ?, ?, ?, ?, ?) "
-            "ON CONFLICT(groupId, lightUid) DO UPDATE SET brightness=excluded.brightness, x=excluded.x, y=excluded.y, state=excluded.state;";
+    if (rc != SQLITE_DONE) {
+        LogEvent::post(sqlite3_errmsg(_db));
+        return false;
+    }
 
-    if (sqlite3_prepare_v2(_db, sql2, -1, &res, nullptr) != SQLITE_OK) return false;
+    if (sqlite3_changes(_db) == 0) {
+        const auto insertSql1 = "INSERT INTO lights (uid, name, type) VALUES (?, ?, ?);";
+        if (sqlite3_prepare_v2(_db, insertSql1, -1, &res, nullptr) != SQLITE_OK) {
+            LogEvent::post(sqlite3_errmsg(_db));
+            return false;
+        }
 
-    sqlite3_bind_int64(res, 1, static_cast<sqlite3_int64>(light.groupId));
-    sqlite3_bind_text(res, 2, light.uid.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_double(res, 3, light.brightness);
-    sqlite3_bind_double(res, 4, light.x);
-    sqlite3_bind_double(res, 5, light.y);
-    sqlite3_bind_text(res, 6, light.state.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(res, 1, light.uid.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(res, 2, light.name.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(res, 3, light.type.c_str(), -1, SQLITE_TRANSIENT);
+
+        rc = sqlite3_step(res);
+        sqlite3_finalize(res);
+
+        if (rc != SQLITE_DONE) {
+            LogEvent::post(sqlite3_errmsg(_db));
+            return false;
+        }
+    }
+
+    // 2. Update/Insert into group_lights join table
+    const auto updateSql2 = "UPDATE group_lights SET brightness=?, x=?, y=?, state=?, mirek=? WHERE groupId=? AND lightUid=?;";
+
+    if (sqlite3_prepare_v2(_db, updateSql2, -1, &res, nullptr) != SQLITE_OK) {
+        LogEvent::post(sqlite3_errmsg(_db));
+        return false;
+    }
+
+    sqlite3_bind_double(res, 1, light.brightness);
+    sqlite3_bind_double(res, 2, light.x);
+    sqlite3_bind_double(res, 3, light.y);
+    sqlite3_bind_text(res, 4, light.state.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(res, 5, light.mirek);
+    sqlite3_bind_int64(res, 6, static_cast<sqlite3_int64>(light.groupId));
+    sqlite3_bind_text(res, 7, light.uid.c_str(), -1, SQLITE_TRANSIENT);
 
     rc = sqlite3_step(res);
     sqlite3_finalize(res);
-    return rc == SQLITE_DONE;
+
+    if (rc != SQLITE_DONE) {
+        LogEvent::post(sqlite3_errmsg(_db));
+        return false;
+    }
+
+    if (sqlite3_changes(_db) == 0) {
+        const auto insertSql2 = "INSERT INTO group_lights (groupId, lightUid, brightness, x, y, state, mirek) VALUES (?, ?, ?, ?, ?, ?, ?);";
+        if (sqlite3_prepare_v2(_db, insertSql2, -1, &res, nullptr) != SQLITE_OK) {
+            LogEvent::post(sqlite3_errmsg(_db));
+            return false;
+        }
+
+        sqlite3_bind_int64(res, 1, static_cast<sqlite3_int64>(light.groupId));
+        sqlite3_bind_text(res, 2, light.uid.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_double(res, 3, light.brightness);
+        sqlite3_bind_double(res, 4, light.x);
+        sqlite3_bind_double(res, 5, light.y);
+        sqlite3_bind_text(res, 6, light.state.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_int(res, 7, light.mirek);
+
+        rc = sqlite3_step(res);
+        sqlite3_finalize(res);
+
+        if (rc != SQLITE_DONE) {
+            LogEvent::post(sqlite3_errmsg(_db));
+            return false;
+        }
+    }
+
+    return true;
 }
 
 bool LightsDatabaseManager::upsertSwitch(const Switch &sw) const {
     sqlite3_stmt *res;
-    const char *sql = "INSERT INTO switches (uid, name, groupId) VALUES (?, ?, ?) "
-            "ON CONFLICT(uid) DO UPDATE SET name=excluded.name, groupId=excluded.groupId;";
+    const auto updateSql = "UPDATE switches SET name=?, groupId=? WHERE uid=?;";
 
-    if (sqlite3_prepare_v2(_db, sql, -1, &res, nullptr) != SQLITE_OK) return false;
+    if (sqlite3_prepare_v2(_db, updateSql, -1, &res, nullptr) != SQLITE_OK) {
+        LogEvent::post(sqlite3_errmsg(_db));
+        return false;
+    }
 
-    sqlite3_bind_text(res, 1, sw.uid.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(res, 2, sw.name.c_str(), -1, SQLITE_TRANSIENT);
-    sqlite3_bind_int64(res, 3, static_cast<sqlite3_int64>(sw.groupId));
+    sqlite3_bind_text(res, 1, sw.name.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(res, 2, static_cast<sqlite3_int64>(sw.groupId));
+    sqlite3_bind_text(res, 3, sw.uid.c_str(), -1, SQLITE_TRANSIENT);
 
     int rc = sqlite3_step(res);
     sqlite3_finalize(res);
-    return rc == SQLITE_DONE;
+
+    if (rc != SQLITE_DONE) {
+        LogEvent::post(sqlite3_errmsg(_db));
+        return false;
+    }
+
+    if (sqlite3_changes(_db) == 0) {
+        const auto insertSql = "INSERT INTO switches (uid, name, groupId) VALUES (?, ?, ?);";
+        if (sqlite3_prepare_v2(_db, insertSql, -1, &res, nullptr) != SQLITE_OK) {
+            LogEvent::post(sqlite3_errmsg(_db));
+            return false;
+        }
+
+        sqlite3_bind_text(res, 1, sw.uid.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(res, 2, sw.name.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_int64(res, 3, static_cast<sqlite3_int64>(sw.groupId));
+
+        rc = sqlite3_step(res);
+        sqlite3_finalize(res);
+
+        if (rc != SQLITE_DONE) {
+            LogEvent::post(sqlite3_errmsg(_db));
+            return false;
+        }
+    }
+
+    return true;
 }
 
 std::vector<Group> LightsDatabaseManager::getAllGroups() const {
     std::vector<Group> groups;
     sqlite3_stmt *res;
-    const auto sql = "SELECT id, name, brightness, x, y FROM groups;";
+    const auto sql = "SELECT id, name, brightness, x, y, mirek FROM groups;";
 
     if (sqlite3_prepare_v2(_db, sql, -1, &res, nullptr) == SQLITE_OK) {
         while (sqlite3_step(res) == SQLITE_ROW) {
@@ -162,6 +286,7 @@ std::vector<Group> LightsDatabaseManager::getAllGroups() const {
             group.brightness = static_cast<float>(sqlite3_column_double(res, 2));
             group.x = static_cast<float>(sqlite3_column_double(res, 3));
             group.y = static_cast<float>(sqlite3_column_double(res, 4));
+            group.mirek = sqlite3_column_int(res, 5);
             groups.push_back(group);
         }
         sqlite3_finalize(res);
@@ -170,9 +295,9 @@ std::vector<Group> LightsDatabaseManager::getAllGroups() const {
 }
 
 Group LightsDatabaseManager::getGroupBySwitchUid(const String &switchUid) const {
-    Group group = {0, "", 0.0f, 0.0f, 0.0f};
+    Group group = {0, "", 0.0f, 0.0f, 0.0f, 0};
     sqlite3_stmt *res;
-    const char *sql = "SELECT g.id, g.name, g.brightness, g.x, g.y FROM groups g "
+    const char *sql = "SELECT g.id, g.name, g.brightness, g.x, g.y, g.mirek FROM groups g "
             "JOIN switches s ON g.id = s.groupId WHERE s.uid = ?;";
 
     if (sqlite3_prepare_v2(_db, sql, -1, &res, nullptr) == SQLITE_OK) {
@@ -183,6 +308,7 @@ Group LightsDatabaseManager::getGroupBySwitchUid(const String &switchUid) const 
             group.brightness = static_cast<float>(sqlite3_column_double(res, 2));
             group.x = static_cast<float>(sqlite3_column_double(res, 3));
             group.y = static_cast<float>(sqlite3_column_double(res, 4));
+            group.mirek = sqlite3_column_int(res, 5);
         }
         sqlite3_finalize(res);
     }
@@ -192,7 +318,7 @@ Group LightsDatabaseManager::getGroupBySwitchUid(const String &switchUid) const 
 std::vector<Light> LightsDatabaseManager::getLightsByGroupId(uint64_t groupId) const {
     std::vector<Light> lights;
     sqlite3_stmt *res;
-    const char *sql = "SELECT l.uid, l.name, gl.state, l.type, gl.brightness, gl.x, gl.y, gl.groupId "
+    const char *sql = "SELECT l.uid, l.name, gl.state, l.type, gl.brightness, gl.x, gl.y, gl.groupId, gl.mirek "
             "FROM lights l "
             "JOIN group_lights gl ON l.uid = gl.lightUid "
             "WHERE gl.groupId = ?;";
@@ -209,6 +335,7 @@ std::vector<Light> LightsDatabaseManager::getLightsByGroupId(uint64_t groupId) c
             light.x = static_cast<float>(sqlite3_column_double(res, 5));
             light.y = static_cast<float>(sqlite3_column_double(res, 6));
             light.groupId = sqlite3_column_int64(res, 7);
+            light.mirek = sqlite3_column_int(res, 8);
             lights.push_back(light);
         }
         sqlite3_finalize(res);
@@ -250,6 +377,85 @@ Switch LightsDatabaseManager::getSwitchByUid(const String &switchUid) const {
         sqlite3_finalize(res);
     }
     return sw;
+}
+
+bool LightsDatabaseManager::deleteLight(const String &lightUid, uint64_t groupId) const {
+    sqlite3_stmt *res;
+    const auto *sql1 = "DELETE FROM group_lights WHERE lightUid = ? AND groupId = ?;";
+
+    if (sqlite3_prepare_v2(_db, sql1, -1, &res, nullptr) != SQLITE_OK) return false;
+    sqlite3_bind_text(res, 1, lightUid.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(res, 2, static_cast<sqlite3_int64>(groupId));
+    const int rc = sqlite3_step(res);
+    sqlite3_finalize(res);
+
+    if (rc != SQLITE_DONE) return false;
+
+    // Check if light is still referenced
+    const auto *sql2 = "SELECT COUNT(*) FROM group_lights WHERE lightUid = ?;";
+    int count = 0;
+    if (sqlite3_prepare_v2(_db, sql2, -1, &res, nullptr) == SQLITE_OK) {
+        sqlite3_bind_text(res, 1, lightUid.c_str(), -1, SQLITE_TRANSIENT);
+        if (sqlite3_step(res) == SQLITE_ROW) {
+            count = sqlite3_column_int(res, 0);
+        }
+        sqlite3_finalize(res);
+    }
+
+    if (count == 0) {
+        const auto *sql3 = "DELETE FROM lights WHERE uid = ?;";
+        if (sqlite3_prepare_v2(_db, sql3, -1, &res, nullptr) == SQLITE_OK) {
+            sqlite3_bind_text(res, 1, lightUid.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_step(res);
+            sqlite3_finalize(res);
+        }
+    }
+
+    return true;
+}
+
+bool LightsDatabaseManager::deleteSwitch(const String &switchUid) const {
+    sqlite3_stmt *res;
+    const auto *sql = "DELETE FROM switches WHERE uid = ?;";
+
+    if (sqlite3_prepare_v2(_db, sql, -1, &res, nullptr) != SQLITE_OK) return false;
+    sqlite3_bind_text(res, 1, switchUid.c_str(), -1, SQLITE_TRANSIENT);
+    const int rc = sqlite3_step(res);
+    sqlite3_finalize(res);
+
+    if (rc != SQLITE_DONE) {
+        LogEvent::post(sqlite3_errmsg(_db));
+    }
+    return rc == SQLITE_DONE;
+}
+
+bool LightsDatabaseManager::deleteGroup(const uint64_t groupId) const {
+    sqlite3_stmt *res;
+
+    const auto *sql1 = "DELETE FROM switches WHERE groupId = ?;";
+    if (sqlite3_prepare_v2(_db, sql1, -1, &res, nullptr) == SQLITE_OK) {
+        sqlite3_bind_int64(res, 1, static_cast<sqlite3_int64>(groupId));
+        sqlite3_step(res);
+        sqlite3_finalize(res);
+    }
+
+    const auto *sql2 = "DELETE FROM group_lights WHERE groupId = ?;";
+    if (sqlite3_prepare_v2(_db, sql2, -1, &res, nullptr) == SQLITE_OK) {
+        sqlite3_bind_int64(res, 1, static_cast<sqlite3_int64>(groupId));
+        sqlite3_step(res);
+        sqlite3_finalize(res);
+    }
+
+    const auto *sql3 = "DELETE FROM groups WHERE id = ?;";
+    if (sqlite3_prepare_v2(_db, sql3, -1, &res, nullptr) == SQLITE_OK) {
+        sqlite3_bind_int64(res, 1, static_cast<sqlite3_int64>(groupId));
+        sqlite3_step(res);
+        sqlite3_finalize(res);
+    }
+
+    // "After deleting a group, the lights table should be cleaned and none referencing lights should also be removed."
+    const auto sql4 = "DELETE FROM lights WHERE uid NOT IN (SELECT DISTINCT lightUid FROM group_lights);";
+    return executeQuery(sql4);
 }
 
 bool LightsDatabaseManager::importDatabase(const uint8_t *data, const size_t len) {

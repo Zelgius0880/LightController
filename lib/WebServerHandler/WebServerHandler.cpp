@@ -43,6 +43,9 @@ void WebServerHandler::setup() {
     DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
     DefaultHeaders::Instance().addHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
     DefaultHeaders::Instance().addHeader("Access-Control-Allow-Headers", "Content-Type");
+
+    _secureClient.setInsecure();
+
     _server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
         request->send(200, "text/html", index_html, processor);
     });
@@ -57,7 +60,8 @@ void WebServerHandler::setup() {
     });
 
     // 2. Attach the Body handler to it
-    handler->onBody([](AsyncWebServerRequest *request, const uint8_t *data, const size_t len, const size_t index, const size_t total) {
+    handler->onBody([](AsyncWebServerRequest *request, const uint8_t *data, const size_t len, const size_t index,
+                       const size_t total) {
         if (xSemaphoreTake(fsMutex, pdMS_TO_TICKS(5000))) {
             if (!index) {
                 // Open file for writing
@@ -161,10 +165,15 @@ void WebServerHandler::setup() {
         request->send(LittleFS, DB_PATH, "application/octet-stream", true);
     });
 
-    _server.on("/import_db", HTTP_POST, [](AsyncWebServerRequest *request) {
+    _server.on("/import_db", HTTP_POST | HTTP_OPTIONS, [](AsyncWebServerRequest *request) {
+                   if (request->method() == HTTP_OPTIONS) {
+                       handleOption(request);
+                       return;
+                   }
                    request->send(200, "text/plain", "Import successful");
                },
-               [this](const AsyncWebServerRequest *request, const String &, const size_t index, const uint8_t *data, const size_t len,
+               [this](const AsyncWebServerRequest *request, const String &, const size_t index, const uint8_t *data,
+                      const size_t len,
                       const bool final) {
                    if (index == 0) {
                        const size_t totalSize = request->contentLength();
@@ -210,21 +219,28 @@ void WebServerHandler::setup() {
         const std::vector<Group> groups = dbManager.getAllGroups();
         JsonDocument doc(&allocator);
         const JsonArray array = doc.to<JsonArray>();
-        for (const auto &group : groups) {
+        for (const auto &group: groups) {
             auto obj = array.add<JsonObject>();
             obj["id"] = group.id;
             obj["name"] = group.name;
             obj["brightness"] = group.brightness;
             obj["x"] = group.x;
             obj["y"] = group.y;
+            obj["mirek"] = group.mirek;
         }
         String response;
         serializeJson(doc, response);
         request->send(200, "application/json", response);
     });
 
-    _server.on("/groups", HTTP_POST, [](AsyncWebServerRequest *) {}, nullptr,
+    _server.on("/groups", HTTP_POST | HTTP_OPTIONS, [](AsyncWebServerRequest *) {
+               }, nullptr,
                [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t, size_t) {
+                   if (request->method() == HTTP_OPTIONS) {
+                       handleOption(request);
+                       return;
+                   }
+
                    JsonDocument doc(&allocator);
                    const DeserializationError error = deserializeJson(doc, data, len);
                    if (error) {
@@ -238,6 +254,7 @@ void WebServerHandler::setup() {
                    group.brightness = doc["brightness"];
                    group.x = doc["x"];
                    group.y = doc["y"];
+                   group.mirek = doc["mirek"];
 
                    if (dbManager.upsertGroup(group)) {
                        request->send(200, "application/json", R"({"status":"ok"})");
@@ -245,6 +262,25 @@ void WebServerHandler::setup() {
                        request->send(500, "application/json", R"({"error":"Failed to upsert group"})");
                    }
                });
+
+    _server.on("/groups", HTTP_DELETE | HTTP_OPTIONS, [](AsyncWebServerRequest *request) {
+        if (request->method() == HTTP_OPTIONS) {
+            handleOption(request);
+            return;
+        }
+
+        if (!request->hasParam("id")) {
+            request->send(400, "application/json", R"({"error":"Missing id parameter"})");
+            return;
+        }
+
+        const uint64_t groupId = strtoull(request->getParam("id")->value().c_str(), nullptr, 10);
+        if (dbManager.deleteGroup(groupId)) {
+            request->send(200, "application/json", R"({"status":"ok"})");
+        } else {
+            request->send(500, "application/json", R"({"error":"Failed to delete group"})");
+        }
+    });
 
     _server.on("/lights", HTTP_GET, [](AsyncWebServerRequest *request) {
         if (!request->hasParam("groupId")) {
@@ -255,7 +291,7 @@ void WebServerHandler::setup() {
         const std::vector<Light> lights = dbManager.getLightsByGroupId(groupId);
         JsonDocument doc(&allocator);
         const auto array = doc.to<JsonArray>();
-        for (const auto &light : lights) {
+        for (const auto &light: lights) {
             auto obj = array.add<JsonObject>();
             obj["uid"] = light.uid;
             obj["name"] = light.name;
@@ -264,6 +300,7 @@ void WebServerHandler::setup() {
             obj["brightness"] = light.brightness;
             obj["x"] = light.x;
             obj["y"] = light.y;
+            obj["mirek"] = light.mirek;
             obj["groupId"] = light.groupId;
         }
         String response;
@@ -271,8 +308,14 @@ void WebServerHandler::setup() {
         request->send(200, "application/json", response);
     });
 
-    _server.on("/lights", HTTP_POST, [](AsyncWebServerRequest *) {}, nullptr,
+    _server.on("/lights", HTTP_POST | HTTP_OPTIONS, [](AsyncWebServerRequest *) {
+               }, nullptr,
                [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t, size_t) {
+                   if (request->method() == HTTP_OPTIONS) {
+                       handleOption(request);
+                       return;
+                   }
+
                    JsonDocument doc(&allocator);
                    const DeserializationError error = deserializeJson(doc, data, len);
                    if (error) {
@@ -288,6 +331,7 @@ void WebServerHandler::setup() {
                    light.brightness = doc["brightness"];
                    light.x = doc["x"];
                    light.y = doc["y"];
+                   light.mirek = doc["mirek"];
                    light.groupId = doc["groupId"];
 
                    if (dbManager.upsertLight(light)) {
@@ -296,6 +340,27 @@ void WebServerHandler::setup() {
                        request->send(500, "application/json", R"({"error":"Failed to upsert light"})");
                    }
                });
+
+    _server.on("/lights", HTTP_DELETE | HTTP_OPTIONS, [](AsyncWebServerRequest *request) {
+        if (request->method() == HTTP_OPTIONS) {
+            handleOption(request);
+            return;
+        }
+
+        if (!request->hasParam("uid") || !request->hasParam("groupId")) {
+            request->send(400, "application/json", R"({"error":"Missing uid or groupId parameter"})");
+            return;
+        }
+
+        const String uid = request->getParam("uid")->value();
+        const uint64_t groupId = strtoull(request->getParam("groupId")->value().c_str(), nullptr, 10);
+
+        if (dbManager.deleteLight(uid, groupId)) {
+            request->send(200, "application/json", R"({"status":"ok"})");
+        } else {
+            request->send(500, "application/json", R"({"error":"Failed to delete light"})");
+        }
+    });
 
     _server.on("/switches", HTTP_GET, [](AsyncWebServerRequest *request) {
         if (!request->hasParam("groupId")) {
@@ -306,7 +371,7 @@ void WebServerHandler::setup() {
         const std::vector<Switch> switches = dbManager.getSwitchesByGroupId(groupId);
         JsonDocument doc(&allocator);
         const auto array = doc.to<JsonArray>();
-        for (const auto &sw : switches) {
+        for (const auto &sw: switches) {
             auto obj = array.add<JsonObject>();
             obj["uid"] = sw.uid;
             obj["name"] = sw.name;
@@ -317,19 +382,18 @@ void WebServerHandler::setup() {
         request->send(200, "application/json", response);
     });
 
-    _server.on("/switches/check", HTTP_GET, [](AsyncWebServerRequest *request) {
+    _server.on("/switch_attribution/check", HTTP_GET, [](AsyncWebServerRequest *request) {
         if (!request->hasParam("uid")) {
             request->send(400, "application/json", R"({"error":"Missing uid parameter"})");
             return;
         }
         const String uid = request->getParam("uid")->value();
-        const Switch sw = dbManager.getSwitchByUid(uid);
+        const Group group = dbManager.getGroupBySwitchUid(uid);
         JsonDocument doc;
-        if (sw.uid.length() > 0) {
+        if (group.id > 0) {
             doc["exists"] = true;
-            doc["uid"] = sw.uid;
-            doc["name"] = sw.name;
-            doc["groupId"] = sw.groupId;
+            doc["id"] = group.id;
+            doc["name"] = group.name;
         } else {
             doc["exists"] = false;
         }
@@ -338,8 +402,14 @@ void WebServerHandler::setup() {
         request->send(200, "application/json", response);
     });
 
-    _server.on("/switches", HTTP_POST, [](AsyncWebServerRequest *) {}, nullptr,
+    _server.on("/switches", HTTP_POST | HTTP_OPTIONS, [](AsyncWebServerRequest *) {
+               }, nullptr,
                [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t, size_t) {
+                   if (request->method() == HTTP_OPTIONS) {
+                       handleOption(request);
+                       return;
+                   }
+
                    JsonDocument doc(&allocator);
                    const DeserializationError error = deserializeJson(doc, data, len);
                    if (error) {
@@ -359,8 +429,33 @@ void WebServerHandler::setup() {
                    }
                });
 
-    _server.on("/switch_attribution/mode", HTTP_POST, [](AsyncWebServerRequest *) {}, nullptr,
+    _server.on("/switches", HTTP_DELETE | HTTP_OPTIONS, [](AsyncWebServerRequest *request) {
+        if (request->method() == HTTP_OPTIONS) {
+            handleOption(request);
+            return;
+        }
+
+        if (!request->hasParam("uid")) {
+            request->send(400, "application/json", R"({"error":"Missing uid parameter"})");
+            return;
+        }
+
+        const String uid = request->getParam("uid")->value();
+        if (dbManager.deleteSwitch(uid)) {
+            request->send(200, "application/json", R"({"status":"ok"})");
+        } else {
+            request->send(500, "application/json", R"({"error":"Failed to delete switch"})");
+        }
+    });
+
+    _server.on("/switch_attribution/mode", HTTP_POST | HTTP_OPTIONS, [](AsyncWebServerRequest *) {
+               }, nullptr,
                [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t, size_t) {
+                   if (request->method() == HTTP_OPTIONS) {
+                       handleOption(request);
+                       return;
+                   }
+
                    JsonDocument doc(&allocator);
                    const DeserializationError error = deserializeJson(doc, data, len);
                    if (error) {
@@ -387,11 +482,77 @@ void WebServerHandler::setup() {
         serializeJson(doc, response);
         request->send(200, "application/json", response);
     });
+
+    _server.on("/proxy", HTTP_OPTIONS, [](AsyncWebServerRequest *request) {
+        handleOption(request);
+    });
+
+    _server.on("/proxy", HTTP_ANY, [this](AsyncWebServerRequest *request) {
+                   // This part handles GET or the 'finalization' of a POST
+                   if (request->method() == HTTP_GET || request->method() == HTTP_OPTIONS) {
+                       processProxy(request, "");
+                   }
+               }, nullptr, [this](AsyncWebServerRequest *request, const uint8_t *data, size_t len, size_t index,
+                                  size_t total) {
+                   // This part handles the incoming Body (POST/PUT)
+                   for (size_t i = 0; i < len; i++) {
+                       _globalBodyBuffer += static_cast<char>(data[i]);
+                   }
+
+                   if (index + len == total) {
+                       processProxy(request, _globalBodyBuffer);
+                       _globalBodyBuffer = ""; // Clear for next request
+                   }
+               });
+}
+
+void WebServerHandler::handleOption(AsyncWebServerRequest *request) {
+    AsyncWebServerResponse *response = request->beginResponse(204); // 204 = No Content
+    response->addHeader("Access-Control-Allow-Origin", "*");
+    response->addHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTION");
+    response->addHeader("Access-Control-Allow-Headers", "*");
+    response->addHeader("Access-Control-Max-Age", "86400"); // Cache preflight for 24h
+    request->send(response);
+}
+
+void WebServerHandler::processProxy(AsyncWebServerRequest *request, const String &body) {
+    const String targetUrl = request->getParam("url")->value();
+    _http.begin(_secureClient, targetUrl);
+
+    // Transparently forward the method and body
+
+    const size_t headersCount = request->headers();
+    for (int i = 0; i < headersCount; i++) {
+        const AsyncWebHeader *h = request->getHeader(i);
+        String name = h->name();
+        // Skip headers that should be handled by the ESP32 itself
+        if (!name.equalsIgnoreCase("Host") &&
+            !name.equalsIgnoreCase("Content-Length") &&
+            !name.equalsIgnoreCase("Connection")) {
+            _http.addHeader(name, h->value());
+        }
+    }
+
+    const int httpCode = _http.sendRequest(request->methodToString(), body);
+    if (httpCode > 0) {
+        AsyncWebServerResponse *response = request->beginResponse(httpCode, request->header("accept"),
+                                                                  _http.getString());
+        // The essential CORS headers for the KMP App
+        response->addHeader("Access-Control-Allow-Origin", "*");
+        response->addHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, PUT, DELETE, OPTIONS");
+        response->addHeader("Access-Control-Allow-Headers", "*");
+        request->send(response);
+    } else {
+        request->send(502, "text/plain", "Proxy Error");
+    }
+    _http.end();
 }
 
 String WebServerHandler::processor(const String &var) {
     if (var == "NETATMO_CLIENT_ID") {
         return NETATMO_CLIENT_ID;
+    } else if (var == "LOCAL_IP") {
+        return WiFi.localIP().toString();
     }
     return {};
 }

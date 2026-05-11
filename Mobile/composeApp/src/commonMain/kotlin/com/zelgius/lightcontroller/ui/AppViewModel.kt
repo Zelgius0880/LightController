@@ -2,7 +2,7 @@ package com.zelgius.lightcontroller.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.zelgius.lightcontroller.domain.settings.SettingsRepository
+import com.zelgius.lightcontroller.domain.repository.settings.SettingsRepository
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn

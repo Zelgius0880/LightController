@@ -34,6 +34,7 @@ kotlin {
             implementation(libs.kotlinx.coroutines.android)
             implementation(libs.koin.android)
             implementation(libs.koin.androidx.compose)
+            implementation(libs.logging.interceptor)
         }
         commonMain.dependencies {
             implementation(libs.compose.runtime)
@@ -48,6 +49,9 @@ kotlin {
 
             implementation(libs.ktor.client.core)
             implementation(libs.ktor.client.websockets)
+            implementation(libs.ktor.client.negociation)
+            implementation(libs.ktor.client.json)
+
             implementation(libs.kotlinx.coroutines.core)
 
             implementation(libs.koin.core)
@@ -68,6 +72,21 @@ kotlin {
             implementation(libs.kotlinx.datetime)
 
             implementation(libs.kotlinx.serialization.json)
+
+            implementation(libs.filekit.core)
+            implementation(libs.filekit.dialogs)
+            implementation(libs.filekit.dialogs.compose)
+
+            implementation(libs.chartopia)
+            implementation(libs.kmpkit)
+
+            implementation(libs.compose.colorpicker)
+    }
+
+        commonTest.dependencies {
+            implementation(libs.kotlin.test)
+            implementation(libs.ktor.client.mock)
+            implementation(libs.kotlinx.coroutines.test)
         }
 
         wasmJsMain.dependencies {

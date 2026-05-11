@@ -1,5 +1,6 @@
-package com.zelgius.lightcontroller.domain.web
+package com.zelgius.lightcontroller.domain.repository.web
 
+import com.zelgius.lightcontroller.domain.repository.settings.SettingsRepository
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.http.HttpMethod
@@ -9,24 +10,28 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.plus
 import org.koin.core.annotation.Named
 import org.koin.core.annotation.Singleton
 
 
 @Singleton
 class WebSocketRepository(
-    @Named("WebSocket") private val client: HttpClient
+    @Named("WebSocket") private val client: HttpClient,
+    private val settingsRepository: SettingsRepository,
 ) {
     private val _wsConnectedFlow = MutableStateFlow(false)
     val wsConnectedFlow get() = _wsConnectedFlow.asStateFlow()
 
-    private val _wsMessageFlow = MutableSharedFlow<WebSocketMessage>()
+    private val _wsMessageFlow = MutableSharedFlow<WebSocketMessage>(
+        replay = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
     val wsMessageFlow get() = _wsMessageFlow.asSharedFlow()
 
 
@@ -36,7 +41,7 @@ class WebSocketRepository(
     private var currentPort: Int? = null
 
     fun connectWs(ip: String, port: Int, onConnection: (connected: Boolean) -> Unit = {}) {
-        if(currentPort != port || currentIp != ip) {
+        if (currentPort != port || currentIp != ip) {
             disconnect()
 
             connectionJob = CoroutineScope(Dispatchers.Default + SupervisorJob()).launch {
@@ -55,7 +60,12 @@ class WebSocketRepository(
                         try {
                             for (frame in incoming) {
                                 if (frame is Frame.Text) {
-                                    _wsMessageFlow.tryEmit(WebSocketMessage.fromString(frame.readText()))
+                                    _wsMessageFlow.emit(
+                                        WebSocketMessage.fromString(frame.readText()).also {
+                                            if (it is WebSocketMessage.Status && it.username.isNotBlank()) {
+                                                settingsRepository.saveHueApiKey(it.username)
+                                            }
+                                        })
                                 }
                             }
                         } finally {

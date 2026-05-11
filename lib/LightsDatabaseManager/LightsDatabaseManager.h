@@ -11,6 +11,7 @@ struct Group {
     float brightness;
     float x;
     float y;
+    int mirek;
 };
 
 struct Light {
@@ -21,6 +22,7 @@ struct Light {
     float brightness;
     float x;
     float y;
+    int mirek;
     uint64_t groupId;
 };
 
@@ -49,6 +51,11 @@ public:
     std::vector<Light> getLightsByGroupId(uint64_t groupId) const; // Already exists
     std::vector<Switch> getSwitchesByGroupId(uint64_t groupId) const; // New method
     Switch getSwitchByUid(const String& switchUid) const; // New method
+
+    // Deletion
+    bool deleteLight(const String& lightUid, uint64_t groupId) const;
+    bool deleteSwitch(const String& switchUid) const;
+    bool deleteGroup(uint64_t groupId) const;
 
     // Import (Backup management)
     bool importDatabase(const uint8_t *data, size_t len);

@@ -152,6 +152,9 @@
     const MAX_DATA_POINTS = 50;
     let memoryChart;
 
+    window.LOCAL_IP = "%LOCAL_IP%"
+    window.NETATMO_CLIENT_ID = "%NETATMO_CLIENT_ID%"
+
     const input = document.getElementById('upload');
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
