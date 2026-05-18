@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.Preferences
 import com.zelgius.lightcontroller.Factory
 import com.zelgius.lightcontroller.PLATFORM
 import com.zelgius.lightcontroller.Platform
+import com.zelgius.lightcontroller.domain.repository.StoredImageRepository
 import com.zelgius.lightcontroller.domain.repository.settings.SettingsRepository
 import com.zelgius.lightcontroller.domain.repository.settings.SettingsRepositoryImpl
 import com.zelgius.lightcontroller.platformHttpClient
@@ -56,6 +57,11 @@ class RepositoryModule {
     @Single
     fun provideSettingRepository(dataStore: DataStore<Preferences>): SettingsRepository =
         SettingsRepositoryImpl(dataStore)
+
+
+    @Single
+    fun provideStoredImageRepository(@Provided factory: Factory): StoredImageRepository =
+        factory.createStoredImageRepository()
 
     @Single
     @Named("Proxy")

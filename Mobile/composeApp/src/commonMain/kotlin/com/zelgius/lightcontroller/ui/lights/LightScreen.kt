@@ -133,6 +133,8 @@ private fun LightScreen(state: LightState, onRefresh: () -> Unit, onDeleteGroup:
         directive = directive
     )
 
+    val isThreePanes = directive.maxHorizontalPartitions >= 2
+
     val backStack = rememberNavBackStack(config, Route.Groups)
 
     val groupDetailsViewModel: GroupDetailsViewModel = koinViewModel()
@@ -155,7 +157,10 @@ private fun LightScreen(state: LightState, onRefresh: () -> Unit, onDeleteGroup:
             }
 
             entry<Route.AddItem>(metadata = ListDetailSceneStrategy.extraPane()) {
-                AddItemScreen(group = it.group, lights = it.lights) { items ->
+                AddItemScreen(group = it.group, lights = it.lights, onBack = {
+                    backStack.removeLastOrNull()
+                    Unit
+                }.takeIf { isThreePanes }) { items ->
                     backStack.removeLastOrNull()
                     groupDetailsViewModel.onItemsAdded(items)
                 }

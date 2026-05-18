@@ -59,3 +59,24 @@ val scrimDark = Color(0xFF000000)
 val inverseSurfaceDark = Color(0xFFDEE3E5)
 val inverseOnSurfaceDark = Color(0xFF2B3133)
 val inversePrimaryDark = Color(0xFF006874)
+
+val Grey50 = Color(0xFFFAFAFA)
+val Grey100 = Color(0xFFF5F5F5)
+val Grey200 = Color(0xFFEEEEEE)
+val Grey300 = Color(0xFFE0E0E0)
+val Grey400 = Color(0xFFBDBDBD)
+val Grey500 = Color(0xFF9E9E9E)
+val Grey600 = Color(0xFF757575)
+val Grey700 = Color(0xFF616161)
+val Grey800 = Color(0xFF424242)
+val Grey900 = Color(0xFF212121)
+
+val greyShades = listOf(
+    Grey400,
+    Grey500,
+    Grey600,
+    Grey700,
+    Grey800,
+    Grey900,
+    Color.Black,
+)

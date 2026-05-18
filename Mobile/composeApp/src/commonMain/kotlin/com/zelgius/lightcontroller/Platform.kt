@@ -1,9 +1,11 @@
 package com.zelgius.lightcontroller
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.navigation3.runtime.NavKey
+import com.zelgius.lightcontroller.domain.repository.StoredImageRepository
 import io.ktor.client.HttpClient
 import io.ktor.client.HttpClientConfig
 import org.koin.core.module.Module
@@ -23,6 +25,8 @@ expect class Factory {
     suspend fun download(bytes: ByteArray, fileName: String,
                          mimeType: String
                          ): Boolean
+
+    fun createStoredImageRepository(): StoredImageRepository
 }
 
 expect val platformModule: Module
@@ -42,3 +46,7 @@ expect fun isDarkMode(): Boolean
 expect fun platformHttpClient(
     block: HttpClientConfig<*>.() -> Unit = {}
 ): HttpClient
+
+
+internal expect fun ImageBitmap.readPixelsToByteArray(): ByteArray
+internal expect suspend fun createImageBitmapFromBytes(bytes: ByteArray, width: Int, height: Int): ImageBitmap

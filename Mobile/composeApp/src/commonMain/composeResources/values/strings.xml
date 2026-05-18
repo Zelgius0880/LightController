@@ -65,4 +65,18 @@
     <string name="confirm_delete_group">Are you sure you want to delete this group?</string>
     <string name="yes">Yes</string>
     <string name="cancel">Cancel</string>
+    <string name="pick_image_meassage">Please pick an image before starting</string>
+    <string name="pick_image">Pick an image</string>
+    <string name="preview_dither">Preview dither</string>
+    <string name="send">Send</string>
+    <string name="alpha">Alpha</string>
+    <string name="raw">Raw</string>
+    <string name="normalized">Normalized</string>
+    <string name="image_rendered">The image as been sent and rendered</string>
+    <string name="image_render_failed">Something goes wrong</string>
+    <string name="show_queue">Show queue</string>
+    <string name="close">Close</string>
+    <string name="stored_image">Stored images</string>
+    <string name="select_image">Select an image to display it</string>
+    <string name="image_queued">Image queued</string>
 </resources>

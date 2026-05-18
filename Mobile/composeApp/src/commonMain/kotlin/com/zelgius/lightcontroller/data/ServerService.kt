@@ -8,6 +8,7 @@ import com.zelgius.lightcontroller.domain.repository.web.Switch
 import com.zelgius.lightcontroller.domain.repository.web.SwitchCheckResponse
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
+import io.ktor.client.plugins.timeout
 import io.ktor.client.request.delete
 import io.ktor.client.request.forms.formData
 import io.ktor.client.request.forms.submitFormWithBinaryData
@@ -22,6 +23,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import org.koin.core.annotation.Named
 import org.koin.core.annotation.Singleton
+import kotlin.time.Duration.Companion.minutes
 
 @Singleton
 class ServerService(
@@ -30,7 +32,12 @@ class ServerService(
 
     suspend fun getStatus(baseUrl: String): StatusResponse = client.get("$baseUrl/status").body()
 
-    suspend fun triggerRender(baseUrl: String) = client.get("$baseUrl/render")
+    suspend fun triggerRender(baseUrl: String) = client.get("$baseUrl/render"){
+        timeout {
+            socketTimeoutMillis = 5.minutes.inWholeMilliseconds
+            requestTimeoutMillis = 5.minutes.inWholeMilliseconds
+        }
+    }
 
     // --- Database & Files ---
 
@@ -57,6 +64,10 @@ class ServerService(
         return client.post("$baseUrl/upload_image") {
             setBody(bytes)
             contentType(ContentType.Application.OctetStream)
+            timeout {
+                socketTimeoutMillis = 5.minutes.inWholeMilliseconds
+                requestTimeoutMillis = 5.minutes.inWholeMilliseconds
+            }
         }
     }
 

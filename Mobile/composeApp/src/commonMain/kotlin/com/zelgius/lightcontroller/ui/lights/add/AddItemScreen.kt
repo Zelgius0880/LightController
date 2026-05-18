@@ -30,6 +30,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.InputChip
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
@@ -74,7 +75,8 @@ fun AddItemScreen(
     group: Group,
     lights: List<Light>,
     viewModel: AddItemViewModel = koinViewModel(),
-    onSave: (List<WebItem>) -> Unit
+    onBack: (() -> Unit) ? = null,
+    onSave: (List<WebItem>) -> Unit,
 ) {
     DisposableEffect(group) {
         viewModel.initialize(group, lights)
@@ -92,6 +94,7 @@ fun AddItemScreen(
         state = state,
         clickedSwitch = clickedSwitch,
         onSwitchAdded = viewModel::addSwitch,
+        onBack = onBack,
         onRemove = {
             when (it) {
                 is Item.Light -> viewModel.removeLight(it)
@@ -111,6 +114,7 @@ private fun AddItemScreen(
     groupName: String,
     state: State,
     clickedSwitch: ClickedSwitch?,
+    onBack: (() -> Unit) ? = null,
     onRemove: (item: Item) -> Unit,
     onClicked: (item: Item.Light) -> Unit,
     onSwitchAdded: (uid: String) -> Unit,
@@ -121,6 +125,13 @@ private fun AddItemScreen(
             TopAppBar(
                 title = {
                     Text(stringResource(Res.string.add_items_to, groupName))
+                },
+                navigationIcon = {
+                   onBack?.let {
+                        IconButton(onClick = it) {
+                            Icon(Icons.TwoTone.Close, contentDescription = "Close")
+                        }
+                    }
                 },
                 actions = {
                     Button(onClick = onSave) {

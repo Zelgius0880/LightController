@@ -11,14 +11,23 @@ import androidx.compose.material.icons.twotone.Lightbulb
 import androidx.compose.material.icons.twotone.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBarDefaults
+import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.NavigationDrawerItemColors
+import androidx.compose.material3.NavigationDrawerItemDefaults
+import androidx.compose.material3.NavigationItemColors
+import androidx.compose.material3.NavigationRailItemDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
 import androidx.compose.material3.adaptive.layout.calculatePaneScaffoldDirective
 import androidx.compose.material3.adaptive.navigation.BackNavigationBehavior
+import androidx.compose.material3.adaptive.navigation3.ListDetailSceneStrategy
 import androidx.compose.material3.adaptive.navigation3.SupportingPaneSceneStrategy
+import androidx.compose.material3.adaptive.navigation3.rememberListDetailSceneStrategy
 import androidx.compose.material3.adaptive.navigation3.rememberSupportingPaneSceneStrategy
+import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteDefaults
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -39,6 +48,7 @@ import com.zelgius.lightcontroller.navigation.Lights
 import com.zelgius.lightcontroller.navigation.Placeholder
 import com.zelgius.lightcontroller.navigation.Settings
 import com.zelgius.lightcontroller.ui.home.HomeScreen
+import com.zelgius.lightcontroller.ui.image.ImageScreen
 import com.zelgius.lightcontroller.ui.lights.LightScreen
 import com.zelgius.lightcontroller.ui.settings.SettingsScreen
 import com.zelgius.lightcontroller.ui.theme.AppTheme
@@ -75,12 +85,24 @@ fun App() {
                     .copy(
                         horizontalPartitionSpacerSize = 0.dp,
                         maxVerticalPartitions = 1,
-                        defaultPanePreferredWidth = maxWidth / 2
+                        //defaultPanePreferredWidth = 3000.dp
                     )
             }
 
             val isSinglePane = directive.maxHorizontalPartitions == 1
 
+
+            val itemsColors = NavigationSuiteDefaults.itemColors(
+                navigationRailItemColors = NavigationRailItemDefaults.colors(
+                    selectedIconColor = MaterialTheme.colorScheme.secondary
+                ),
+                navigationDrawerItemColors = NavigationDrawerItemDefaults.colors(
+                    selectedIconColor = MaterialTheme.colorScheme.secondary
+                ),
+                navigationBarItemColors = NavigationBarItemDefaults.colors(
+                    selectedIconColor = MaterialTheme.colorScheme.secondary
+                )
+            )
             NavigationSuiteScaffold(
                 navigationSuiteItems = {
                     val entries = buildList {
@@ -94,9 +116,10 @@ fun App() {
                             icon = {
                                 Icon(
                                     it.icon,
-                                    contentDescription = stringResource(it.contentDescription)
+                                    contentDescription = stringResource(it.contentDescription),
                                 )
                             },
+                            colors = itemsColors,
                             label = { Text(stringResource(it.label)) },
                             selected = it == currentDestination,
                             onClick = {
@@ -116,7 +139,7 @@ fun App() {
                 }
             ) {
 
-                val supportingPaneStrategy = rememberSupportingPaneSceneStrategy<NavKey>(
+                val supportingPaneStrategy = rememberListDetailSceneStrategy<NavKey>(
                     backNavigationBehavior = BackNavigationBehavior.PopUntilCurrentDestinationChange,
                     directive = directive
                 )
@@ -127,7 +150,7 @@ fun App() {
                     onBack = { backStack.removeLastOrNull() },
                     entryProvider = entryProvider {
                         entry<Home>(
-                            metadata = SupportingPaneSceneStrategy.mainPane()
+                            metadata = ListDetailSceneStrategy.listPane()
                         ) {
                             currentDestination = AppDestinations.Dashboard
                             HomeScreen(isSinglePane) {
@@ -136,19 +159,16 @@ fun App() {
                         }
 
                         entry<Settings>(
-                            metadata = SupportingPaneSceneStrategy.supportingPane()
+                            metadata = ListDetailSceneStrategy.detailPane()
                         ) {
                             currentDestination = AppDestinations.Settings
                             SettingsScreen(
-                                onBack = if (isSinglePane) {
-                                    {
-                                        backStack.removeLastOrNull()
-                                    }
-                                } else null)
+                                onBack = ({ backStack.removeLastOrNull(); Unit }).takeIf { isSinglePane }
+                            )
                         }
 
                         entry<Lights>(
-                            metadata = SupportingPaneSceneStrategy.supportingPane()
+                            metadata = ListDetailSceneStrategy.detailPane()
                         ) {
                             currentDestination = AppDestinations.Lights
                             LightScreen()
@@ -156,18 +176,12 @@ fun App() {
 
 
                         entry<Image>(
-                            metadata = SupportingPaneSceneStrategy.supportingPane()
+                            metadata = ListDetailSceneStrategy.detailPane()
                         ) {
                             currentDestination = AppDestinations.Image
-                            PlaceholderScreen()
-                        }
-
-
-                        entry<Placeholder>(
-                            metadata = SupportingPaneSceneStrategy.supportingPane()
-                        ) {
-                            currentDestination = null
-                            PlaceholderScreen()
+                            ImageScreen(
+                                onBack = ({ backStack.removeLastOrNull(); Unit }).takeIf { isSinglePane }
+                            )
                         }
 
                     }
@@ -176,20 +190,4 @@ fun App() {
         }
     }
 
-}
-
-
-@Composable
-fun PlaceholderScreen() {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                text = "Placeholder",
-                style = MaterialTheme.typography.headlineMedium
-            )
-        }
-    }
 }

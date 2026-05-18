@@ -20,12 +20,11 @@ kotlin {
         }
     }
 
-    @OptIn(ExperimentalWasmDsl::class)
-    wasmJs {
+    @OptIn(ExperimentalWasmDsl::class) wasmJs {
         browser()
         binaries.executable()
     }
-    
+
     sourceSets {
         androidMain.dependencies {
             implementation(libs.compose.uiToolingPreview)
@@ -35,7 +34,11 @@ kotlin {
             implementation(libs.koin.android)
             implementation(libs.koin.androidx.compose)
             implementation(libs.logging.interceptor)
+            implementation(libs.androidx.work.runtime.ktx)
+            implementation(project.dependencies.platform(libs.firebase.bom))
+            implementation(libs.firebase.crashlytics)
         }
+
         commonMain.dependencies {
             implementation(libs.compose.runtime)
             implementation(libs.compose.foundation)
@@ -81,7 +84,7 @@ kotlin {
             implementation(libs.kmpkit)
 
             implementation(libs.compose.colorpicker)
-    }
+        }
 
         commonTest.dependencies {
             implementation(libs.kotlin.test)
@@ -95,6 +98,10 @@ kotlin {
         }
 
         commonTest.dependencies {
+            implementation(libs.kotlin.test)
+        }
+
+        wasmJsTest.dependencies {
             implementation(libs.kotlin.test)
         }
     }
