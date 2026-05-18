@@ -1,152 +1,36 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
+<title>Image controller</title>
 <head>
-    <title>ESP32 Image Upload</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link href="https://cdn.jsdelivr.net/npm/beercss@3.5.1/dist/cdn/beer.min.css" rel="stylesheet">
-    <script type="module" src="https://cdn.jsdelivr.net/npm/beercss@3.5.1/dist/cdn/beer.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>
-        body {
-            font-family: Arial;
-            text-align: center;
-            margin: 40px;
-            background-color: #f4f4f4;
-        }
+    <meta charset="UTF-8">
+    <title>My Compose Multiplatform App</title>
 
-        .container {
-            max-width: 600px;
-            margin: auto;
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-        }
-
-        img {
-            max-width: 90%%;
-            height: auto;
-            border: 1px solid #ccc;
-            margin-top: 20px;
-            border-radius: 5px;
-        }
-
-        .diagnostic {
-            margin-top: 40px;
-            padding: 20px;
-            border-top: 2px solid #eee;
-            text-align: left;
-        }
-
-        .error {
-            color: red;
-            font-weight: bold;
-        }
-
-        .success {
-            color: green;
-        }
-
-        pre {
-            background: #eee;
-            padding: 10px;
-            overflow-x: auto;
-            border-radius: 5px;
-        }
-
-        button, .button {
-            cursor: pointer;
-        }
-
-        #list-lights-button {
-            margin-top: 8px;
-            margin-bottom: 8px;
-        }
-
-        #status, #error-log, #internal-status, #firmware-version {
-            margin-top: 20px;
-        }
-
-        #status > span, #internal-status > span, #firmware-version > span {
-            padding: 10px;
-        }
-
-        .chart-container {
-            position: relative;
-            height: 200px;
-            width: 100%%;
-            margin-top: 20px;
-        }
-    </style>
+    <!-- 1. Load the Compose canvas helper script from the CDN -->
+    <script src="https://your-cdn-url.com/myapp/composeApp.js" charset="UTF-8"></script>
 </head>
 <body>
-<div class="container">
-    <h4>Upload PNG Image</h4>
+<canvas id="ComposeTarget"></canvas>
 
-    <div class="grid cricle">
-        <div class="field label prefix border s7">
-            <i>attach_file</i>
-            <input type="file" name="image" id="upload" accept="image/jpeg">
-            <input type="text">
-            <label>Select image</label>
-        </div>
-        <input class="button s5" type="submit" id="process" value="Upload">
+<script>
 
-        <div class="border s12">
-            <canvas id="canvas"></canvas>
-        </div>
-    </div>
+    window.LOCAL_IP = "%LOCAL_IP%"
+    window.NETATMO_CLIENT_ID = "%NETATMO_CLIENT_ID%"
 
-    <h4>Database Management</h4>
-    <div class="grid no-space">
-        <form method="POST" action="/import_db" enctype="multipart/form-data" class="grid cricle s10">
-            <div class="field label prefix border s7">
-                <i>storage</i>
-                <input type="file" name="db">
-                <input type="text">
-                <label>Select lights.db</label>
-            </div>
-            <input class="button s5" type="submit" value="Import DB">
-        </form>
-        <div class="s2">
-            <a href="/export_db" class="button border circle" title="Export DB">
-                <i>download</i>
-            </a>
-        </div>
-    </div>
 
-    <h4>Stored Image</h4>
-    <div class="grid cricle">
-        <div class="border s12">
-            <img id="serverImage" src="/image.jpg" style="transform: rotate(-90deg);">
-        </div>
-    </div>
-    <div class="diagnostic">
-        <h4>Diagnostic Section</h4>
-        <div id="status">Checking connection...</div>
-        <div id="firmware-version">Firmware: Checking...</div>
-        <div id="internal-status">Checking status...</div>
-        <div id="error-log" class="error"></div>
-
-        <h5>Hue Lights Test</h5>
-        <button id="list-lights-button" onclick="listLights()">List Lights</button>
-        <pre id="lights-list">Click the button to fetch lights...</pre>
-
-        <h5>Netatmo Authorization</h5>
-        <button class="button" onclick="authorizeNetatmo()">Authorize Netatmo</button>
-        <div id="netatmo-status"></div>
-        <pre id="netatmo-info"></pre>
-
-        <h5>Last 10 Logs</h5>
-        <pre id="logs-list">Fetching logs...</pre>
-
-        <h5>Memory Allocation Graphs</h5>
-        <div class="chart-container">
-            <canvas id="memoryChart"></canvas>
-        </div>
-    </div>
-
-</div>
+    // 2. Configure Compose to fetch the .wasm file from the CDN
+    // By default, it looks for it in the same directory, so we override it.
+    window.addEventListener('DOMContentLoaded', () => {
+        // Check if the initialization function exists from the CDN script
+        if (typeof composeApp !== 'undefined' && composeApp.main) {
+            // If your build setup uses the standard Kotlin/Wasm instantiation,
+            // ensure any relative paths point to the CDN.
+            // Note: Some setups require passing the baseUrl to the main function if you load resources.
+            composeApp.main();
+        }
+    });
+</script>
+</body>
+</html>
 
 <script>
     const MAX_DATA_POINTS = 50;
