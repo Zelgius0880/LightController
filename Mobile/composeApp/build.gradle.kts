@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalWasmDsl::class)
+
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 
 plugins {
@@ -23,6 +25,10 @@ kotlin {
     @OptIn(ExperimentalWasmDsl::class) wasmJs {
         browser()
         binaries.executable()
+        compilerOptions {
+            freeCompilerArgs.add("-Xir-produce-klib-dir")
+
+        }
     }
 
     sourceSets {

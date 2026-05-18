@@ -85,7 +85,6 @@ fun App() {
                     .copy(
                         horizontalPartitionSpacerSize = 0.dp,
                         maxVerticalPartitions = 1,
-                        //defaultPanePreferredWidth = 3000.dp
                     )
             }
 

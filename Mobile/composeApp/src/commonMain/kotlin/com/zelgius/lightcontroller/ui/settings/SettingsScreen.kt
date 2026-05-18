@@ -1,19 +1,43 @@
 package com.zelgius.lightcontroller.ui.settings
 
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.twotone.ArrowBack
-import androidx.compose.material.icons.twotone.ArrowBack
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularWavyProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import com.zelgius.lightcontroller.selfHosted
+import com.zelgius.lightcontroller.selfHostedIp
 import io.github.vinceglb.filekit.FileKit
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.openFilePicker
@@ -68,7 +92,7 @@ fun SettingsScreen(
         onImport = {
             coroutineScope.launch {
                 val file = FileKit.openFilePicker(type = FileKitType.File("db"))
-                if(file != null) viewModel.onImport(file)
+                if (file != null) viewModel.onImport(file)
             }
         },
         onNetatmoToken = viewModel::openNetatmoTokenTab
@@ -145,41 +169,41 @@ private fun Content(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
 
-        Text(
-            text = stringResource(Res.string.server_settings),
-            style = MaterialTheme.typography.headlineMedium
-        )
+        if (selfHostedIp() == null) {
+            Text(
+                text = stringResource(Res.string.server_settings),
+                style = MaterialTheme.typography.headlineMedium
+            )
 
-        OutlinedTextField(
-            shape = CircleShape,
-            value = state.ip ?: "",
-            onValueChange = onIpChanged,
-            label = { Text(stringResource(Res.string.server_ip_label)) },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true
-        )
+            OutlinedTextField(
+                shape = CircleShape,
+                value = state.ip ?: "",
+                onValueChange = onIpChanged,
+                label = { Text(stringResource(Res.string.server_ip_label)) },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
+            )
 
-        OutlinedTextField(
-            shape = CircleShape,
-            value = "${state.port}",
-            onValueChange = onPortChanged,
-            label = { Text(stringResource(Res.string.server_port_label)) },
-            modifier = Modifier.fillMaxWidth(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            singleLine = true
-        )
+            OutlinedTextField(
+                shape = CircleShape,
+                value = "${state.port}",
+                onValueChange = onPortChanged,
+                label = { Text(stringResource(Res.string.server_port_label)) },
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                singleLine = true
+            )
 
-        val connected = state.connected
+            val connected = state.connected
 
-        Button(
-            onClick = onTryConnection,
-            enabled = connected != null,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text(stringResource(Res.string.test_connection_and_save))
-        }
+            Button(
+                onClick = onTryConnection,
+                enabled = connected != null,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(stringResource(Res.string.test_connection_and_save))
+            }
 
-        if (!selfHosted) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -224,7 +248,7 @@ private fun Content(
             }
         }
 
-        if( selfHosted) {
+        if (selfHostedIp() == null) {
             Text(
                 text = stringResource(Res.string.netatmo_token),
                 style = MaterialTheme.typography.headlineMedium

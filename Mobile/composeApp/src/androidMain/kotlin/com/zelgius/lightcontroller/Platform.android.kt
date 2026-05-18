@@ -132,7 +132,7 @@ val config = SavedStateConfiguration {
 @Composable
 actual fun createBackStack(): MutableList<NavKey> = rememberNavBackStack(config, Home)
 
-actual val selfHosted: Boolean get() = false
+actual fun selfHostedIp(): String? = null
 
 actual fun buildNetatmoTokenUrl(): String {
     throw IllegalStateException("Netatmo token is not supported for Android")

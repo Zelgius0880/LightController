@@ -48,6 +48,7 @@ import org.jetbrains.skia.impl.use
 import org.koin.dsl.module
 import org.w3c.dom.CanvasRenderingContext2D
 import org.w3c.dom.HTMLCanvasElement
+import org.w3c.dom.get
 import kotlin.random.Random
 
 actual val platformModule = module {
@@ -72,7 +73,7 @@ actual class Factory {
 }
 
 @Composable
-actual fun createBackStack(): MutableList<NavKey> {
+internal actual fun createBackStack(): MutableList<NavKey> {
     val backStack = remember { mutableStateListOf<NavKey>(Home) }
     ChronologicalBrowserNavigation(
         backStack = backStack,
@@ -88,19 +89,22 @@ actual fun createBackStack(): MutableList<NavKey> {
     return backStack
 }
 
-actual val selfHosted: Boolean
-    get() = false
+@OptIn(ExperimentalWasmJsInterop::class)
+internal actual fun selfHostedIp(): String? = getLocalIp()
 
-actual fun openNewTab(url: String) {
+external fun getLocalIp(): String
+external fun getNetatmoClientId(): String
+
+internal actual fun openNewTab(url: String) {
     window.open(url = url, target = "_blank")
 }
 
 @OptIn(ExperimentalWasmJsInterop::class)
-private fun redirectUrl(): String =
+internal fun redirectUrl(): String =
     js("encodeURIComponent(\"http://\"+window.LOCAL_IP)+\"/token_result\"")
 
 @OptIn(ExperimentalWasmJsInterop::class)
-private fun netatmoClientId(): String = js("window.NETATMO_CLIENT_ID")
+internal fun netatmoClientId(): String = getNetatmoClientId()
 
 @OptIn(ExperimentalWasmJsInterop::class)
 actual fun buildNetatmoTokenUrl(): String {
@@ -112,11 +116,11 @@ actual fun buildNetatmoTokenUrl(): String {
 }
 
 @Composable
-actual fun isDarkMode(): Boolean = true
+internal actual fun isDarkMode(): Boolean = true
 
 actual val PLATFORM: Platform = Platform.Web
 
-actual fun platformHttpClient(
+internal actual fun platformHttpClient(
     block: HttpClientConfig<*>.() -> Unit
 ): HttpClient = HttpClient {
     block()
@@ -129,8 +133,6 @@ internal actual fun ImageBitmap.readPixelsToByteArray(): ByteArray {
 
     val pixels = IntArray(pixelMap.width * pixelMap.height)
     this.readPixels(pixels)
-
-    println(this.config)
 
 
     val width = pixelMap.width

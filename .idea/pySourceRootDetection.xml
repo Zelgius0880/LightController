@@ -4,9 +4,11 @@
     <option name="sourcePathsSet">
       <set>
         <option value="$PROJECT_DIR$/lib/HueApiClient/HueApiClient.cpp" />
+        <option value="$PROJECT_DIR$/lib/EPD_13in3e/font8.cpp" />
         <option value="$PROJECT_DIR$/.pio/libdeps/freenove_esp32_s3_wroom/ezBuzzer/src/ezBuzzer.cpp" />
         <option value="$PROJECT_DIR$/.pio/libdeps/freenove_esp32_s3_wroom/ESPAsyncWebServer@src-332d66bd628dd0d3f624de8f54d1f52e/src/AsyncWebSocket.cpp" />
         <option value="$PROJECT_DIR$/lib/NetatmoClient/NetatmoClient.cpp" />
+        <option value="$PROJECT_DIR$/lib/EPD_13in3e/font24.cpp" />
         <option value="$PROJECT_DIR$/.pio/libdeps/freenove_esp32_s3_wroom/TJpg_Decoder/src/tjpgd.c" />
         <option value="$PROJECT_DIR$/.pio/libdeps/freenove_esp32_s3_wroom/ESPAsyncWebServer@src-332d66bd628dd0d3f624de8f54d1f52e/src/AsyncWebHeader.cpp" />
         <option value="$PROJECT_DIR$/.pio/libdeps/freenove_esp32_s3_wroom/ESPAsyncWebServer@src-332d66bd628dd0d3f624de8f54d1f52e/src/WebResponses.cpp" />
@@ -21,6 +23,7 @@
         <option value="$PROJECT_DIR$/.pio/libdeps/freenove_esp32_s3_wroom/ESPAsyncWebServer@src-332d66bd628dd0d3f624de8f54d1f52e/src/ChunkPrint.cpp" />
         <option value="$PROJECT_DIR$/.pio/libdeps/freenove_esp32_s3_wroom/Sqlite3Esp32/src/sqlite3.c" />
         <option value="$PROJECT_DIR$/.pio/libdeps/freenove_esp32_s3_wroom/ArduinoOTA/src/OTAStorage.cpp" />
+        <option value="$PROJECT_DIR$/lib/EPD_13in3e/EPD_13in3e.cpp" />
         <option value="$PROJECT_DIR$/.pio/libdeps/freenove_esp32_s3_wroom/ElegantOTA/src/elop.cpp" />
         <option value="$PROJECT_DIR$/src/tasks/buzzer/task_buzzer.cpp" />
         <option value="$PROJECT_DIR$/.pio/libdeps/freenove_esp32_s3_wroom/ArduinoOTA/src/InternalStorageSTM32.cpp" />
@@ -31,6 +34,7 @@
         <option value="$PROJECT_DIR$/.pio/libdeps/freenove_esp32_s3_wroom/Sqlite3Esp32/src/shox96_0_2.cpp" />
         <option value="$PROJECT_DIR$/.pio/libdeps/freenove_esp32_s3_wroom/ArduinoOTA/src/InternalStorageRenesas.cpp" />
         <option value="$PROJECT_DIR$/venv/lib/python3.12/site-packages/pip/_vendor" />
+        <option value="$PROJECT_DIR$/lib/EPD_13in3e/font12.cpp" />
         <option value="$PROJECT_DIR$/.pio/libdeps/freenove_esp32_s3_wroom/ArduinoOTA/src/WiFiOTA.cpp" />
         <option value="$PROJECT_DIR$/.pio/libdeps/freenove_esp32_s3_wroom/ArduinoOTA/src/InternalStorageRP2.cpp" />
         <option value="$PROJECT_DIR$/.pio/libdeps/freenove_esp32_s3_wroom/Sqlite3Esp32/src/unishox1.c" />
@@ -38,10 +42,12 @@
         <option value="$PROJECT_DIR$/src/tasks/logger/task_logger.cpp" />
         <option value="$PROJECT_DIR$/.pio/libdeps/freenove_esp32_s3_wroom/ESPAsyncWebServer@src-332d66bd628dd0d3f624de8f54d1f52e/src/WebRequest.cpp" />
         <option value="$PROJECT_DIR$/lib/ImageRenderer/ImageRenderer.cpp" />
+        <option value="$PROJECT_DIR$/lib/EPD_13in3e/GUI_Paint.cpp" />
         <option value="$PROJECT_DIR$/.pio/libdeps/freenove_esp32_s3_wroom/ESPAsyncWebServer@src-332d66bd628dd0d3f624de8f54d1f52e/src/WebServer.cpp" />
         <option value="$PROJECT_DIR$/.pio/libdeps/freenove_esp32_s3_wroom/ArduinoOTA/src/utility/rp2_flash_boot.c" />
         <option value="$PROJECT_DIR$/src/main.cpp" />
         <option value="$PROJECT_DIR$/.pio/libdeps/freenove_esp32_s3_wroom/ESPAsyncWebServer@src-332d66bd628dd0d3f624de8f54d1f52e/src/WebHandlers.cpp" />
+        <option value="$PROJECT_DIR$/lib/EPD_13in3e/DEV_Config.cpp" />
         <option value="$PROJECT_DIR$/lib/LightsDatabaseManager/LightsDatabaseManager.cpp" />
         <option value="$PROJECT_DIR$/.pio/libdeps/freenove_esp32_s3_wroom/AsyncTCP@src-3d2743e0c28a86159a81736b0029ad30/src/AsyncTCP.cpp" />
         <option value="$PROJECT_DIR$/.pio/libdeps/freenove_esp32_s3_wroom/NTPClient/NTPClient.cpp" />
@@ -50,21 +56,23 @@
         <option value="$PROJECT_DIR$/.pio/libdeps/freenove_esp32_s3_wroom/JPEGENC/src/JPEGENC.cpp" />
         <option value="$PROJECT_DIR$/.pio/libdeps/freenove_esp32_s3_wroom/ArduinoOTA/src/InternalStorage.cpp" />
         <option value="$PROJECT_DIR$/.pio/libdeps/freenove_esp32_s3_wroom/ESPAsyncWebServer@src-332d66bd628dd0d3f624de8f54d1f52e/src/BackPort_SHA1Builder.cpp" />
+        <option value="$PROJECT_DIR$/lib/EPD_13in3e/font16.cpp" />
         <option value="$PROJECT_DIR$/src/tasks/lights/task_light_controller.cpp" />
         <option value="$PROJECT_DIR$/lib/WebServerHandler/WebServerHandler.cpp" />
         <option value="$PROJECT_DIR$/.pio/libdeps/freenove_esp32_s3_wroom/ArduinoOTA/src/utility/stm32_flash_boot.c" />
+        <option value="$PROJECT_DIR$/lib/EPD_13in3e/font20.cpp" />
         <option value="$PROJECT_DIR$/.pio/libdeps/freenove_esp32_s3_wroom/TFT_eSPI/TFT_eSPI.cpp" />
         <option value="$PROJECT_DIR$/.pio/libdeps/freenove_esp32_s3_wroom/ArduinoOTA/src/InternalStorageESP.cpp" />
         <option value="$PROJECT_DIR$/.pio/libdeps/freenove_esp32_s3_wroom/ArduinoOTA/src/InternalStorageAVR.cpp" />
         <option value="$PROJECT_DIR$/venv/lib/python3.12/site-packages" />
-        <option value="$PROJECT_DIR$/lib/EPD_13in3e/font20.cpp" />
-        <option value="$PROJECT_DIR$/lib/EPD_13in3e/font16.cpp" />
-        <option value="$PROJECT_DIR$/lib/EPD_13in3e/font12.cpp" />
-        <option value="$PROJECT_DIR$/lib/EPD_13in3e/EPD_13in3e.cpp" />
-        <option value="$PROJECT_DIR$/lib/EPD_13in3e/GUI_Paint.cpp" />
-        <option value="$PROJECT_DIR$/lib/EPD_13in3e/font24.cpp" />
-        <option value="$PROJECT_DIR$/lib/EPD_13in3e/font8.cpp" />
-        <option value="$PROJECT_DIR$/lib/EPD_13in3e/DEV_Config.cpp" />
+        <option value="$PROJECT_DIR$/.pio/libdeps/freenove_esp32_s3_wroom/WebSockets/src/libsha1/libsha1.c" />
+        <option value="$PROJECT_DIR$/.pio/libdeps/freenove_esp32_s3_wroom/WebSockets/src/WebSocketsServer.cpp" />
+        <option value="$PROJECT_DIR$/.pio/libdeps/freenove_esp32_s3_wroom/WebSockets/src/libb64/cencode.c" />
+        <option value="$PROJECT_DIR$/.pio/libdeps/freenove_esp32_s3_wroom/WebSockets/src/libb64/cdecode.c" />
+        <option value="$PROJECT_DIR$/.pio/libdeps/freenove_esp32_s3_wroom/WebSockets/src/SocketIOclient.cpp" />
+        <option value="$PROJECT_DIR$/.pio/libdeps/freenove_esp32_s3_wroom/WebSockets/src/WebSocketsClient.cpp" />
+        <option value="$PROJECT_DIR$/.pio/libdeps/freenove_esp32_s3_wroom/WebSockets/src/WebSockets.cpp" />
+        <option value="$PROJECT_DIR$/lib/OpenMeteoClient/OpenMeteoClient.cpp" />
       </set>
     </option>
   </component>

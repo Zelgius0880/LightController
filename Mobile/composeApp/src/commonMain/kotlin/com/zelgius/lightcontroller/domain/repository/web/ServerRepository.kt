@@ -2,7 +2,7 @@ package com.zelgius.lightcontroller.domain.repository.web
 
 import com.zelgius.lightcontroller.data.ServerService
 import com.zelgius.lightcontroller.domain.repository.settings.SettingsRepository
-import com.zelgius.lightcontroller.selfHosted
+import com.zelgius.lightcontroller.selfHostedIp
 import io.ktor.client.statement.HttpResponse
 import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.flow.first
@@ -15,7 +15,6 @@ class ServerRepository (
     @Provided private val settingsRepository: SettingsRepository
 ) {
     private suspend fun ip(): String {
-        if(selfHosted) return "http://127.0.0.1"
         return settingsRepository.ipFlow.first()?.let {
             if(!it.startsWith("http")) "http://$it"
             else it

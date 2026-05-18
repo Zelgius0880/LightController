@@ -32,18 +32,18 @@ expect class Factory {
 expect val platformModule: Module
 
 @Composable
-expect fun createBackStack(): MutableList<NavKey>
+internal expect fun createBackStack(): MutableList<NavKey>
 
-expect val selfHosted: Boolean
+internal expect fun selfHostedIp(): String?
 
-expect fun openNewTab(url: String)
+internal expect fun openNewTab(url: String)
 
-expect fun buildNetatmoTokenUrl(): String
+internal expect fun buildNetatmoTokenUrl(): String
 
 @Composable
-expect fun isDarkMode(): Boolean
+internal expect fun isDarkMode(): Boolean
 
-expect fun platformHttpClient(
+internal expect fun platformHttpClient(
     block: HttpClientConfig<*>.() -> Unit = {}
 ): HttpClient
 
